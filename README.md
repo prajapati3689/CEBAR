@@ -1,4 +1,4 @@
-# MIDAS Financial Dashboard
+# CEBAR
 
 A premium, high-fidelity **React + Vite** dashboard built to display and analyze budget allocation, expenditure, and revenue figures from the Supabase database.
 
