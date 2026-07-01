@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { supabase } from './supabase';
 import { 
   Search, 
   Filter, 
@@ -357,39 +358,83 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // Load and Parse CSV Files
+  // Load data from Supabase
   useEffect(() => {
     async function loadData() {
       try {
         setIsLoading(true);
         setError(null);
         
-        // Load the local CSV files served from the public folder
-        const [resHOA, resMapping, resBudget, resElekha, resDdoMapping] = await Promise.all([
-          fetch('/Revenue_HOA.csv'),
-          fetch('/Office_Mapping.csv'),
-          fetch('/budget_report.csv'),
-          fetch('/e-Lekha.csv'),
-          fetch('/revenue_ddo_mapping.csv')
+        // 1. Fetch static mappings and raw budget from Supabase
+        const [resHOA, resMapping, resBudget, resDdoMapping] = await Promise.all([
+          supabase.from('Revenue_hoa').select('*'),
+          supabase.from('office_mapping').select('*'),
+          supabase.from('Budget').select('*'),
+          supabase.from('Revenue DDO Mapping').select('*')
         ]);
 
-        if (!resHOA.ok || !resMapping.ok || !resBudget.ok || !resElekha.ok || !resDdoMapping.ok) {
-          throw new Error("One or more files failed to load from /public directory.");
+        if (resHOA.error) throw resHOA.error;
+        if (resMapping.error) throw resMapping.error;
+        if (resBudget.error) throw resBudget.error;
+        if (resDdoMapping.error) throw resDdoMapping.error;
+
+        const hoas = resHOA.data;
+        const mapping = resMapping.data;
+        const budgetRaw = resBudget.data;
+        const ddoMap = resDdoMapping.data;
+
+        // 2. Fetch e-Lekha transactions in batches of 20,000 (total ~174k rows)
+        let elekha = [];
+        let page = 0;
+        const pageSize = 20000;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('e-Lekha')
+            .select('*')
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+            
+          if (error) throw error;
+          
+          if (data && data.length > 0) {
+            elekha = elekha.concat(data);
+            if (data.length < pageSize) {
+              hasMore = false;
+            } else {
+              page++;
+            }
+          } else {
+            hasMore = false;
+          }
         }
 
-        const [textHOA, textMapping, textBudget, textElekha, textDdoMapping] = await Promise.all([
-          resHOA.text(),
-          resMapping.text(),
-          resBudget.text(),
-          resElekha.text(),
-          resDdoMapping.text()
-        ]);
+        // 3. Map raw Budget table to the format expected by the frontend
+        const officeToRegionMap = {};
+        mapping.forEach(m => {
+          if (m['Office ID'] && m.Region) {
+            officeToRegionMap[String(m['Office ID']).trim()] = String(m.Region).trim();
+          }
+        });
 
-        const hoas = csvToObjects(textHOA);
-        const mapping = csvToObjects(textMapping);
-        const budget = csvToObjects(textBudget);
-        const elekha = csvToObjects(textElekha);
-        const ddoMap = csvToObjects(textDdoMapping);
+        const budget = budgetRaw.map(row => {
+          const officeId = String(row['Office ID'] || '').trim();
+          const region = officeToRegionMap[officeId] || '';
+          
+          // Unify/clean scientific notations (like 3.20E+14)
+          let rawHoa = String(row['HOA'] || '').trim();
+          const cleanHoa = rawHoa.includes('E') ? String(parseFloat(rawHoa)) : rawHoa;
+
+          return {
+            'Office ID': officeId,
+            'Name of Unit (HO/Division)': row['Office Name'] || '',
+            'Region': region,
+            'HOA': cleanHoa,
+            'Description': row['HOA Description'] || '',
+            'APT Alloted': parseNumber(row['Consumable Budget (I)']),
+            'APT Consumed': parseNumber(row['Consumed Budget (H)'])
+          };
+        });
 
         setHoaList(hoas);
         setOfficeMapping(mapping);
@@ -440,8 +485,8 @@ export default function App() {
 
         setIsLoading(false);
       } catch (err) {
-        console.error("Error loading CSV files:", err);
-        setError("Error: Failed to retrieve data. Make sure 'budget report.csv', 'e-Lekha.csv', 'Revenue_HOA.csv', 'Office_Mapping.csv', and 'revenue ddo mapping.csv' are in the project public folder.");
+        console.error("Error loading data from Supabase:", err);
+        setError(`Error: Failed to retrieve data from Supabase. ${err.message || err}`);
         setIsLoading(false);
       }
     }
