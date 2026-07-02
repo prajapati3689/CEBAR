@@ -529,7 +529,7 @@ export default function App() {
         const hoas = convertDbRowsToStrings(rawHoaList);
         const mapping = convertDbRowsToStrings(rawMapping);
         const ddoMap = convertDbRowsToStrings(rawDdoMapping);
-        const elekha = convertDbRowsToStrings(rawElekha);
+        const elekhaRaw = convertDbRowsToStrings(rawElekha);
         const budgetRaw = convertDbRowsToStrings(rawBudget);
 
         // Build mapping maps
@@ -545,7 +545,7 @@ export default function App() {
           }
         });
 
-        // Build description-to-HOA map from Revenue_hoa and e-Lekha
+        // Build description-to-HOA map from Revenue_hoa (do not overwrite with generic e-Lekha codes!)
         const descToHoaMap = {};
         hoas.forEach(item => {
           const code = item['HOA Code'];
@@ -554,12 +554,78 @@ export default function App() {
             descToHoaMap[desc] = code;
           }
         });
-        elekha.forEach(item => {
-          const code = item['HOA'];
-          const desc = item['Description']?.toLowerCase();
-          if (code && desc) {
-            descToHoaMap[desc] = code;
+
+        // Map e-Lekha generic HOA codes to detailed HOA Codes using Description
+        const elekhaToRevenueHoaMap = {
+          '48 speed post doc_ddd': '120100101020100',
+          'atm annual maintenance charge account': '120100200260000',
+          'aadhaar new aadhar enrollment': '120100200230100',
+          'aadhaar other biometric/demography updation': '120100200220100',
+          'commission for popsk transactions': '120100200190000',
+          'commission on indian postal orders': '120100102030000',
+          'commission on inland money orders': '120100102100000',
+          'commission on railway prss': '120100108000000',
+          'commission on revenue/non postal stamps': '120100200120000',
+          'custom duty on outward international mails': '120101000000000',
+          'e-payment service charges- education': '120100800040100',
+          'e-payment service charges- finance': '120100800040100',
+          'fees for communication of marks to candidates': '120100800180100',
+          'fees from contractors': '120100800340000',
+          'media post': '120100800110000',
+          'neft/rtgs charges from customer': '120100200250000',
+          'posb_cheque book issuance fee': '120100200030000',
+          'prc -international express airmail service': '120100101250100',
+          'prc -international tracked packet service': '120100101280100',
+          'prc e-post services.': '120100101120100',
+          'prc- india post parcel-retail': '120100101220100',
+          'prc- international air parcel': '120100101260100',
+          'prc- joint parcel product(railways)': '120100101220100',
+          'prc- magazine post': '120100101330000',
+          'prc-business post': '120100101030100',
+          'prc-india post parcel -contractual': '120100101220100',
+          'prc-international letters (registered)': '120100101270100',
+          'prc-registered letter/article': '120100101310100',
+          'prc-remotely managed franking machine': '120100101230100',
+          'prc-speed post parcel': '120100101290100',
+          'post boxes & bags': '120100200050000',
+          'postage realized in cash for ordinary services': '120100101010100',
+          'rent & taxes': '120100200060100',
+          'retail post': '120100800010100',
+          'revenue - logistics post (surface)': '120100800130100',
+          'revenue on account of pmjjby': '120100800570100',
+          'sale of philatelystamps through bureaux/pos/exhibi': '120100101160300',
+          'sale of postage stamps': '120100101100100',
+          'sale of publications & blank form etc.': '120100800190100',
+          'sale of service stamps': '120100101110100',
+          'sale of special stamps & other materials': '120100800370100',
+          'sale of waste paper dead stock etc': '120100800340000',
+          'direct post': '120100101060000',
+          'bill mail service': '120100101090000',
+          'deduct refunds': '120100800440000',
+          'examination fee etc.': '120100800180100',
+          'joint parcel product(railways)': '120100101220100',
+          'logistics post': '120100800130100',
+          'registered parcel': '120100101300100',
+          'speed post': '120100101020100',
+          'speed post parcel': '120100101290100',
+          'business post': '120100101030100',
+          'magazine post': '120100101330000'
+        };
+
+        const elekha = elekhaRaw.map(row => {
+          let hoa = String(row.HOA || '').trim();
+          const descClean = String(row.Description || '').trim().toLowerCase();
+          
+          if (elekhaToRevenueHoaMap[descClean]) {
+            hoa = elekhaToRevenueHoaMap[descClean];
+          } else if (descToHoaMap[descClean]) {
+            hoa = descToHoaMap[descClean];
           }
+          
+          return {
+            ...row,
+            HOA: hoa
+          };
         });
 
         // Process Budget data with standard naming & HOA resolution
