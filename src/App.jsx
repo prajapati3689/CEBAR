@@ -2564,9 +2564,9 @@ export default function App() {
                     <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '4px', marginBottom: '4px', fontWeight: 'bold', color: 'var(--color-primary)' }}>
                       User Profile Details
                     </div>
-                    <div><strong>User ID:</strong> {currentUser.userid}</div>
+                    <div><strong>User ID:</strong> {currentUser.user_id}</div>
                     <div><strong>Name:</strong> {currentUser.name}</div>
-                    <div><strong>Mobile No:</strong> {currentUser.mobile || '–'}</div>
+                    <div><strong>Mobile No:</strong> {currentUser.mobile_no || '–'}</div>
                     <div><strong>Office:</strong> {currentUser.office || '–'}</div>
                     <div><strong>Type:</strong> {currentUser.type === 'SA' ? 'Super Admin (SA)' : 'Reader (View)'}</div>
                   </div>
