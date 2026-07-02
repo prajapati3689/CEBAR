@@ -586,7 +586,15 @@ export default function App() {
             'Region': region,
             'HOA': hoa,
             'Description': row['HOA Description'] || '',
-            'APT Alloted': row['Consumable Budget (I)'] || '0',
+            'APT Alloted': String(
+              parseNumber(row['Allotted Budget (A)']) +
+              parseNumber(row['Reallotted Budget (B)']) -
+              parseNumber(row['Distributed Budget (C)']) -
+              parseNumber(row['Transferred Budget (D)']) +
+              parseNumber(row['Re-Appropritaion Receipt (E)']) -
+              parseNumber(row['Re-Appropritaion Transferred (F)']) +
+              parseNumber(row['Reserved Budget (G)'])
+            ),
             'APT Consumed': row['Consumed Budget (H)'] || '0'
           };
         });
@@ -2807,7 +2815,7 @@ export default function App() {
                         </th>
                         <th className="text-right">
                           <ColumnHeaderFilter 
-                            title="APT Alloted" 
+                            title="A+B-C-D+E-F+G" 
                             columnName="APT Alloted" 
                             allValues={mappedBudgetData.map(d => String(d['APT Alloted'] || 0))} 
                             selectedFilters={budgetColumnFilters['APT Alloted']} 
