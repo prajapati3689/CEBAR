@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Search, 
@@ -291,9 +292,51 @@ function ColumnHeaderFilter({ title, columnName, allValues, selectedFilters, onC
   );
 }
 
+const BUDGET_COLUMNS = [
+  'Year',
+  'Office ID',
+  'Office Name',
+  'HOA',
+  'HOA Description',
+  'Allocation Type',
+  'Allotted Budget (A)',
+  'Reallotted Budget (B)',
+  'Distributed Budget (C)',
+  'Transferred Budget (D)',
+  'Re-Appropritaion Receipt (E)',
+  'Re-Appropritaion Transferred (F)',
+  'Reserved Budget (G)',
+  'Consumed Budget (H)',
+  'Consumable Budget (I)',
+  'Liability (J)',
+  'Approver Remarks'
+];
+
+const ELEKHA_COLUMNS = [
+  'Month',
+  'DDO Code',
+  'HO',
+  'Division',
+  'Region',
+  'TE Number',
+  'Txn Date',
+  'HOA',
+  'Description',
+  'Receipt (Rs.)',
+  'Payment (Rs.)',
+  'Remark'
+];
+
 export default function App() {
   // Global / Navigation State
-  const [activeTab, setActiveTab] = useState('budget'); // 'elekha', 'budget', 'revenue', 'users'
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = sessionStorage.getItem('cebar_tab');
+    return saved || 'budget';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('cebar_tab', activeTab);
+  }, [activeTab]);
   const [theme, setTheme] = useState('dark');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -326,6 +369,19 @@ export default function App() {
   const [manageType, setManageType] = useState('View');
   const [isEditingUser, setIsEditingUser] = useState(false);
   const [userManagementError, setUserManagementError] = useState('');
+
+  // Database Synchronization State (SA only)
+  const [syncTable, setSyncTable] = useState('Budget'); // 'Budget' or 'e-Lekha'
+  const [syncFile, setSyncFile] = useState(null);
+  const [syncHeaders, setSyncHeaders] = useState([]);
+  const [parsedRows, setParsedRows] = useState([]);
+  const [columnMapping, setColumnMapping] = useState({});
+  const [syncMode, setSyncMode] = useState('append'); // 'append' or 'replace'
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState('');
+  const [syncError, setSyncError] = useState('');
+  const [syncSuccess, setSyncSuccess] = useState(false);
+  const [fileInputKey, setFileInputKey] = useState(Date.now());
 
   // Parsed Datasets
   const [elekhaData, setElekhaData] = useState([]);
@@ -1504,6 +1560,206 @@ export default function App() {
     }
   };
 
+  // Database Synchronization Handlers (SA only)
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setSyncFile(file);
+    setSyncError('');
+    setSyncSuccess(false);
+    setSyncProgress('Parsing file...');
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target.result;
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        // Parse rows to JSON
+        const json = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+        
+        if (json.length === 0) {
+          throw new Error('The selected file is empty.');
+        }
+
+        // Get headers of first sheet
+        const headersJson = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        const headers = headersJson[0] ? headersJson[0].map(h => String(h).trim()) : [];
+        
+        if (headers.length === 0) {
+          throw new Error('No column headers detected in the file.');
+        }
+
+        setSyncHeaders(headers);
+        setParsedRows(json);
+
+        // Pre-build default mappings
+        const targetCols = syncTable === 'Budget' ? BUDGET_COLUMNS : ELEKHA_COLUMNS;
+        const initialMapping = {};
+        
+        targetCols.forEach(targetCol => {
+          const normalizedTarget = targetCol.toLowerCase().replace(/[^a-z0-9]/g, '');
+          
+          const match = headers.find(h => {
+            const normalizedHeader = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return normalizedHeader === normalizedTarget || 
+                   normalizedHeader.includes(normalizedTarget) || 
+                   normalizedTarget.includes(normalizedHeader);
+          });
+          
+          initialMapping[targetCol] = match || '';
+        });
+
+        setColumnMapping(initialMapping);
+        setSyncProgress(`Loaded file successfully. Found ${json.length} rows.`);
+      } catch (err) {
+        console.error('File parse error:', err);
+        setSyncError(`Error reading file: ${err.message || err}`);
+        setSyncFile(null);
+        setSyncHeaders([]);
+        setParsedRows([]);
+        setColumnMapping({});
+        setSyncProgress('');
+      }
+    };
+
+    reader.onerror = () => {
+      setSyncError('Error reading file.');
+      setSyncFile(null);
+      setSyncProgress('');
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleStartSync = async () => {
+    if (!syncFile || parsedRows.length === 0) {
+      setSyncError('Please upload a file first.');
+      return;
+    }
+
+    const activeMapping = { ...columnMapping };
+    const targetCols = syncTable === 'Budget' ? BUDGET_COLUMNS : ELEKHA_COLUMNS;
+    
+    const mappedCount = Object.values(activeMapping).filter(v => !!v).length;
+    if (mappedCount === 0) {
+      setSyncError('No columns are mapped. Please map at least one column to import data.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to save ${parsedRows.length} rows to the "${syncTable}" table in Supabase in ${syncMode.toUpperCase()} mode?`)) {
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncError('');
+    setSyncSuccess(false);
+    setSyncProgress('Preparing synchronization...');
+
+    try {
+      const dbTable = syncTable === 'Budget' ? 'Budget' : 'e-Lekha';
+
+      // 1. If REPLACE mode is active, delete all records first
+      if (syncMode === 'replace') {
+        setSyncProgress('Deleting existing table records in Supabase...');
+        const { error: deleteError } = await supabase
+          .from(dbTable)
+          .delete()
+          .neq('id', -1);
+
+        if (deleteError) {
+          throw new Error(`Failed to clear table records: ${deleteError.message}`);
+        }
+      }
+
+      // 2. Format parsed rows into DB schema objects
+      setSyncProgress('Formatting records for database insertion...');
+      const formattedRows = parsedRows.map(row => {
+        const dbRecord = {};
+        
+        targetCols.forEach(col => {
+          const fileColName = activeMapping[col];
+          if (fileColName) {
+            let val = row[fileColName];
+            
+            if (syncTable === 'Budget') {
+              if (col === 'Year') {
+                dbRecord[col] = val ? parseInt(String(val).replace(/\D/g, ''), 10) : null;
+              } else if ([
+                'Allotted Budget (A)',
+                'Reallotted Budget (B)',
+                'Distributed Budget (C)',
+                'Transferred Budget (D)',
+                'Re-Appropritaion Receipt (E)',
+                'Re-Appropritaion Transferred (F)',
+                'Reserved Budget (G)',
+                'Consumed Budget (H)',
+                'Consumable Budget (I)',
+                'Liability (J)'
+              ].includes(col)) {
+                dbRecord[col] = val ? parseFloat(String(val).replace(/[^0-9.-]/g, '')) : 0;
+              } else {
+                dbRecord[col] = val ? String(val).trim() : '';
+              }
+            } else {
+              // e-Lekha formatting
+              if (col === 'DDO Code' || col === 'TE Number') {
+                dbRecord[col] = val ? parseInt(String(val).replace(/\D/g, ''), 10) : null;
+              } else if (col === 'Receipt (Rs.)' || col === 'Payment (Rs.)') {
+                dbRecord[col] = val ? String(val).trim() : '0';
+              } else {
+                dbRecord[col] = val ? String(val).trim() : '';
+              }
+            }
+          }
+        });
+        
+        return dbRecord;
+      });
+
+      // 3. Batch upload the formatted records in chunks of 500
+      const CHUNK_SIZE = 500;
+      const totalChunks = Math.ceil(formattedRows.length / CHUNK_SIZE);
+      
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = formattedRows.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        setSyncProgress(`Uploading batch ${i + 1} of ${totalChunks} (${chunk.length} rows)...`);
+        
+        const { error: insertError } = await supabase
+          .from(dbTable)
+          .insert(chunk);
+
+        if (insertError) {
+          throw new Error(`Failed to insert batch ${i + 1}: ${insertError.message}`);
+        }
+      }
+
+      setSyncProgress('Upload complete! Finalizing synchronization...');
+      setSyncSuccess(true);
+      
+      // Alert Data Saved
+      alert('Data Saved');
+
+      // Clear sync states
+      setSyncFile(null);
+      setSyncHeaders([]);
+      setParsedRows([]);
+      setColumnMapping({});
+      setFileInputKey(Date.now());
+
+      // Reload dashboard data so it is visible immediately!
+      window.location.reload();
+    } catch (err) {
+      console.error('Database Sync Error:', err);
+      setSyncError(`Sync failed: ${err.message || err}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Click handler to re-calculate vertical revenue matrix
   const handleGenerate = () => {
     setGeneratedConfig({
@@ -2271,12 +2527,20 @@ export default function App() {
             <Coins size={16} /> Vertical Revenue
           </button>
           {currentUser && currentUser.type === 'SA' && (
-            <button 
-              className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-              onClick={() => setActiveTab('users')}
-            >
-              <User size={16} /> User Management
-            </button>
+            <>
+              <button 
+                className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+                onClick={() => setActiveTab('users')}
+              >
+                <User size={16} /> User Management
+              </button>
+              <button 
+                className={`tab-btn ${activeTab === 'sync' ? 'active' : ''}`}
+                onClick={() => setActiveTab('sync')}
+              >
+                <RefreshCw size={16} /> Database Sync
+              </button>
+            </>
           )}
         </div>
 
@@ -3722,6 +3986,225 @@ export default function App() {
                 </div>
               </div>
             )}
+          </>
+        )}
+
+        {/* Tab 5: Database Sync View (SA only) */}
+        {activeTab === 'sync' && currentUser && currentUser.type === 'SA' && (
+          <>
+            <div className="card-title-row" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem', marginBottom: '1.5rem' }}>
+              <div>
+                <h2>Database Synchronization</h2>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                  Upload Excel (.xlsx/.xls) or CSV files to synchronize financial datasets with Supabase.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '800px' }}>
+              {/* Target Table Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>1. Select Target Database Table</label>
+                <select 
+                  className="custom-select"
+                  value={syncTable}
+                  onChange={(e) => {
+                    setSyncTable(e.target.value);
+                    setSyncFile(null);
+                    setSyncHeaders([]);
+                    setParsedRows([]);
+                    setColumnMapping({});
+                    setSyncProgress('');
+                    setSyncError('');
+                    setSyncSuccess(false);
+                    setFileInputKey(Date.now());
+                  }}
+                  style={{ maxWidth: '300px', height: '38px' }}
+                >
+                  <option value="Budget">Budget (public.Budget)</option>
+                  <option value="e-Lekha">e-Lekha (public.e-Lekha)</option>
+                </select>
+              </div>
+
+              {/* File Upload Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>2. Choose File (Excel .xlsx / .xls or CSV)</label>
+                <input 
+                  key={fileInputKey}
+                  type="file" 
+                  accept=".xlsx, .xls, .csv" 
+                  onChange={handleFileChange}
+                  className="custom-input"
+                  style={{ 
+                    maxWidth: '400px', 
+                    padding: '8px', 
+                    border: '1px dashed var(--border-color)', 
+                    backgroundColor: 'var(--bg-input)',
+                    height: 'auto'
+                  }}
+                />
+              </div>
+
+              {/* Mappings and Preview */}
+              {syncFile && syncHeaders.length > 0 && (
+                <div style={{
+                  backgroundColor: 'var(--bg-input)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '15px'
+                }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                    3. Match Column Headings (Destination &harr; Uploaded File)
+                  </h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    Verify how columns from your file align with Supabase fields. Remap headers using the dropdowns if necessary.
+                  </p>
+
+                  <div className="table-wrapper" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                    <table className="premium-table" style={{ fontSize: '0.85rem' }}>
+                      <thead>
+                        <tr>
+                          <th>Destination Database Field</th>
+                          <th>Uploaded File Column Header</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.keys(columnMapping).map((dbField) => (
+                          <tr key={dbField}>
+                            <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{dbField}</td>
+                            <td>
+                              <select
+                                className="custom-select"
+                                value={columnMapping[dbField]}
+                                onChange={(e) => {
+                                  const selectedVal = e.target.value;
+                                  setColumnMapping(prev => ({
+                                    ...prev,
+                                    [dbField]: selectedVal
+                                  }));
+                                }}
+                                style={{ width: '100%', height: '32px', minWidth: '180px' }}
+                              >
+                                <option value="">-- Don't Import / Skip --</option>
+                                {syncHeaders.map(h => (
+                                  <option key={h} value={h}>{h}</option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Sync Mode Option */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
+                    <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>4. Select Synchronization Mode</label>
+                    <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                        <input 
+                          type="radio" 
+                          name="syncMode" 
+                          value="append" 
+                          checked={syncMode === 'append'} 
+                          onChange={(e) => setSyncMode(e.target.value)}
+                        />
+                        <span><strong>Add at last (Append)</strong> — Add new records without changing existing data</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                        <input 
+                          type="radio" 
+                          name="syncMode" 
+                          value="replace" 
+                          checked={syncMode === 'replace'} 
+                          onChange={(e) => setSyncMode(e.target.value)}
+                        />
+                        <span style={{ color: 'var(--color-warning)' }}><strong>Replace entire data (Overwrite)</strong> — Erase existing table rows and upload fresh</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Action Sync Button */}
+                  <div style={{ marginTop: '15px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <button
+                      onClick={handleStartSync}
+                      disabled={isSyncing}
+                      className="pg-btn"
+                      style={{
+                        backgroundColor: 'var(--color-primary)',
+                        color: 'white',
+                        border: 'none',
+                        fontWeight: 'bold',
+                        height: '42px',
+                        padding: '0 2rem',
+                        opacity: isSyncing ? 0.7 : 1
+                      }}
+                    >
+                      {isSyncing ? 'Uploading & Syncing...' : 'Upload and Save to Supabase'}
+                    </button>
+
+                    {isSyncing && (
+                      <div className="spinner" style={{ width: '20px', height: '20px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-primary)' }}></div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Status and Log messaging */}
+              {syncProgress && (
+                <div style={{
+                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  color: '#93c5fd',
+                  padding: '12px 16px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(59, 130, 246, 0.2)',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <RefreshCw size={16} className={isSyncing ? 'spin' : ''} />
+                  <span>{syncProgress}</span>
+                </div>
+              )}
+
+              {syncError && (
+                <div style={{
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  color: '#f87171',
+                  padding: '12px 16px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <AlertTriangle size={16} />
+                  <span>{syncError}</span>
+                </div>
+              )}
+
+              {syncSuccess && (
+                <div style={{
+                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                  color: '#34d399',
+                  padding: '12px 16px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(16, 185, 129, 0.2)',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <CheckCircle size={16} />
+                  <span>Data Saved Successfully! Dashboard is updating...</span>
+                </div>
+              )}
+            </div>
           </>
         )}
 
