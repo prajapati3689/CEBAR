@@ -353,6 +353,7 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showUserTooltip, setShowUserTooltip] = useState(false);
 
   // Force Password Change State
   const [newPassword, setNewPassword] = useState('');
@@ -2517,21 +2518,60 @@ export default function App() {
       <header className="dashboard-header">
         <div className="header-left">
           <h1>🪙 CEBAR - Circle Expenditure, Budget and Accounting Review</h1>
-          <p>Real-time expenditure tracking, budget variance analysis, and vertical revenue comparison report</p>
         </div>
         <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           {currentUser && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem' }}>
-              <span className="user-badge" style={{
-                backgroundColor: 'var(--bg-input)',
-                border: '1px solid var(--border-color)',
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-sm)',
-                fontWeight: 600,
-                color: 'var(--text-secondary)'
-              }}>
-                👤 {currentUser.name.toUpperCase()} ({currentUser.type})
-              </span>
+              <div 
+                className="user-badge-container" 
+                style={{ position: 'relative', display: 'inline-block' }}
+                onMouseEnter={() => setShowUserTooltip(true)}
+                onMouseLeave={() => setShowUserTooltip(false)}
+              >
+                <span className="user-badge" style={{
+                  backgroundColor: 'var(--bg-input)',
+                  border: '1px solid var(--border-color)',
+                  padding: '4px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  cursor: 'help'
+                }}>
+                  👤 {currentUser.name.toUpperCase()} ({currentUser.type})
+                </span>
+                
+                {showUserTooltip && (
+                  <div className="user-tooltip" style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '8px',
+                    backgroundColor: 'var(--bg-card)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '12px 16px',
+                    boxShadow: 'var(--shadow-premium)',
+                    zIndex: 2000,
+                    minWidth: '240px',
+                    textAlign: 'left',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    fontSize: '0.8rem',
+                    lineHeight: '1.4',
+                    color: 'var(--text-primary)'
+                  }}>
+                    <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '4px', marginBottom: '4px', fontWeight: 'bold', color: 'var(--color-primary)' }}>
+                      User Profile Details
+                    </div>
+                    <div><strong>User ID:</strong> {currentUser.userid}</div>
+                    <div><strong>Name:</strong> {currentUser.name}</div>
+                    <div><strong>Mobile No:</strong> {currentUser.mobile || '–'}</div>
+                    <div><strong>Office:</strong> {currentUser.office || '–'}</div>
+                    <div><strong>Type:</strong> {currentUser.type === 'SA' ? 'Super Admin (SA)' : 'Reader (View)'}</div>
+                  </div>
+                )}
+              </div>
               <button 
                 onClick={handleLogout}
                 className="pg-btn"
@@ -2561,17 +2601,6 @@ export default function App() {
           </button>
         </div>
       </header>
-
-      {/* 2. Database Status Indicator */}
-      <div className="security-alert-banner" style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.2)' }}>
-        <div className="alert-message">
-          <CheckCircle size={20} style={{ color: 'var(--color-success)' }} />
-          <div>
-            <strong>Supabase Connected:</strong> Synchronized with real-time financial datasets from the database. 
-            All data aggregates and comparisons are computed instantaneously on the client.
-          </div>
-        </div>
-      </div>
 
       {/* 3. Global Control & Navigation Panel */}
       <div className="controls-panel">
