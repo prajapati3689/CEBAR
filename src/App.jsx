@@ -16,7 +16,17 @@ import {
   ChevronRight, 
   Coins,
   AlertCircle,
-  Download
+  Download,
+  User,
+  Lock,
+  UserX,
+  Plus,
+  Trash2,
+  Edit,
+  LogOut,
+  Key,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zhrztgxvpteituddnuqu.supabase.co';
@@ -283,10 +293,39 @@ function ColumnHeaderFilter({ title, columnName, allValues, selectedFilters, onC
 
 export default function App() {
   // Global / Navigation State
-  const [activeTab, setActiveTab] = useState('budget'); // 'elekha', 'budget', 'revenue'
+  const [activeTab, setActiveTab] = useState('budget'); // 'elekha', 'budget', 'revenue', 'users'
   const [theme, setTheme] = useState('dark');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('cebar_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return !!localStorage.getItem('cebar_user');
+  });
+  const [loginUserId, setLoginUserId] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Force Password Change State
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordChangeError, setPasswordChangeError] = useState('');
+
+  // User Management State (SA only)
+  const [usersList, setUsersList] = useState([]);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [manageUserId, setManageUserId] = useState('');
+  const [manageName, setManageName] = useState('');
+  const [manageMobileNo, setManageMobileNo] = useState('');
+  const [manageOffice, setManageOffice] = useState('');
+  const [manageType, setManageType] = useState('View');
+  const [isEditingUser, setIsEditingUser] = useState(false);
+  const [userManagementError, setUserManagementError] = useState('');
 
   // Parsed Datasets
   const [elekhaData, setElekhaData] = useState([]);
@@ -552,6 +591,25 @@ export default function App() {
     }
     loadData();
   }, []);
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      setUsersList(data || []);
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isLoggedIn && currentUser && currentUser.type === 'SA') {
+      fetchUsers();
+    }
+  }, [isLoggedIn, currentUser, fetchUsers]);
 
   // Build index lookup map for DDO Codes
   const ddoLookupMap = useMemo(() => {
@@ -1220,6 +1278,232 @@ export default function App() {
     );
   };
 
+  // Authentication Handlers
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+    if (!loginUserId || !loginPassword) {
+      setLoginError('User ID and Password are required.');
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('user_id', loginUserId.trim())
+        .single();
+
+      if (error || !data) {
+        setLoginError('Invalid User ID or password.');
+        return;
+      }
+
+      if (data.password !== loginPassword) {
+        setLoginError('Invalid User ID or password.');
+        return;
+      }
+
+      // Successful login
+      setCurrentUser(data);
+      setIsLoggedIn(true);
+      localStorage.setItem('cebar_user', JSON.stringify(data));
+      setLoginUserId('');
+      setLoginPassword('');
+    } catch (err) {
+      console.error('Login error:', err);
+      setLoginError('An error occurred during login. Please try again.');
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setIsLoggedIn(false);
+    localStorage.removeItem('cebar_user');
+    setActiveTab('budget');
+  };
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setPasswordChangeError('');
+    if (!newPassword || !confirmNewPassword) {
+      setPasswordChangeError('All fields are required.');
+      return;
+    }
+    if (newPassword === 'Ahd@12345') {
+      setPasswordChangeError('New password cannot be the default password.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordChangeError('Passwords do not match.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ password: newPassword, needs_password_change: false })
+        .eq('user_id', currentUser.user_id);
+
+      if (error) throw error;
+
+      // Update local state
+      const updatedUser = { ...currentUser, password: newPassword, needs_password_change: false };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('cebar_user', JSON.stringify(updatedUser));
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (err) {
+      console.error('Password change error:', err);
+      setPasswordChangeError('Failed to change password. Please try again.');
+    }
+  };
+
+  // User Management Handlers (SA only)
+  const handleCreateOrUpdateUser = async (e) => {
+    e.preventDefault();
+    setUserManagementError('');
+
+    if (!manageUserId || !manageName || !manageMobileNo || !manageOffice) {
+      setUserManagementError('All fields are required.');
+      return;
+    }
+
+    if (manageUserId.length !== 8 || !/^\d+$/.test(manageUserId)) {
+      setUserManagementError('User ID must be exactly 8 digits.');
+      return;
+    }
+
+    if (manageMobileNo.length !== 10 || !/^\d+$/.test(manageMobileNo)) {
+      setUserManagementError('Mobile Number must be exactly 10 digits.');
+      return;
+    }
+
+    try {
+      if (isEditingUser) {
+        // Master user cannot have their type changed from SA
+        if (manageUserId === '10032853' && manageType !== 'SA') {
+          setUserManagementError('Master user must be of type SA.');
+          return;
+        }
+
+        const { error } = await supabase
+          .from('users')
+          .update({
+            name: manageName.trim(),
+            mobile_no: manageMobileNo.trim(),
+            office: manageOffice.trim(),
+            type: manageType
+          })
+          .eq('user_id', manageUserId);
+
+        if (error) throw error;
+      } else {
+        // Check if user already exists
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('user_id')
+          .eq('user_id', manageUserId)
+          .single();
+
+        if (existingUser) {
+          setUserManagementError('User ID already exists.');
+          return;
+        }
+
+        const { error } = await supabase
+          .from('users')
+          .insert([{
+            user_id: manageUserId,
+            name: manageName.trim(),
+            mobile_no: manageMobileNo.trim(),
+            office: manageOffice.trim(),
+            type: manageType,
+            password: 'Ahd@12345',
+            needs_password_change: true
+          }]);
+
+        if (error) throw error;
+      }
+
+      // Refresh list and close modal
+      await fetchUsers();
+      setShowUserModal(false);
+      resetUserManagementForm();
+    } catch (err) {
+      console.error('User save error:', err);
+      setUserManagementError('Failed to save user. Please try again.');
+    }
+  };
+
+  const resetUserManagementForm = () => {
+    setManageUserId('');
+    setManageName('');
+    setManageMobileNo('');
+    setManageOffice('');
+    setManageType('View');
+    setIsEditingUser(false);
+    setUserManagementError('');
+  };
+
+  const handleEditClick = (user) => {
+    setManageUserId(user.user_id);
+    setManageName(user.name);
+    setManageMobileNo(user.mobile_no);
+    setManageOffice(user.office);
+    setManageType(user.type);
+    setIsEditingUser(true);
+    setShowUserModal(true);
+  };
+
+  const handleDeleteUser = async (userId) => {
+    if (userId === '10032853') {
+      alert('Master user ID cannot be deleted.');
+      return;
+    }
+
+    const userToDelete = usersList.find(u => u.user_id === userId);
+    if (userToDelete?.type === 'SA' && currentUser.user_id !== '10032853') {
+      alert('Only the master user 10032853 can delete SA users.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete user ${userId}?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      await fetchUsers();
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      alert('Failed to delete user. Please try again.');
+    }
+  };
+
+  const handleResetUserPassword = async (userId) => {
+    if (!confirm(`Are you sure you want to reset password for user ${userId} to default password (Ahd@12345)?`)) {
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ password: 'Ahd@12345', needs_password_change: true })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      alert(`Password for user ${userId} reset successfully to Ahd@12345.`);
+      await fetchUsers();
+    } catch (err) {
+      console.error('Error resetting password:', err);
+      alert('Failed to reset password. Please try again.');
+    }
+  };
+
   // Click handler to re-calculate vertical revenue matrix
   const handleGenerate = () => {
     setGeneratedConfig({
@@ -1652,6 +1936,256 @@ export default function App() {
     );
   }
 
+  if (!isLoggedIn) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: 'var(--bg-app)',
+        fontFamily: 'var(--font-sans)',
+        padding: '20px',
+        position: 'relative'
+      }}>
+        <div style={{
+          width: '100%',
+          maxWidth: '450px',
+          backgroundColor: 'var(--bg-card)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '40px',
+          boxShadow: 'var(--shadow-premium)',
+          border: '1px solid var(--border-color)',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🪙</div>
+          <h1 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '1.8rem',
+            fontWeight: 800,
+            color: 'var(--text-primary)',
+            marginBottom: '10px'
+          }}>CEBAR</h1>
+          <p style={{
+            fontSize: '0.9rem',
+            color: 'var(--text-secondary)',
+            marginBottom: '30px',
+            lineHeight: '1.4'
+          }}>
+            Circle Expenditure, Budget and Accounting Review
+          </p>
+
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>User ID</label>
+              <div style={{ position: 'relative' }}>
+                <User size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type="text" 
+                  placeholder="Enter 8-digit User ID" 
+                  value={loginUserId}
+                  onChange={(e) => setLoginUserId(e.target.value.replace(/\D/g, '').substring(0, 8))}
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Password</label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type={showPassword ? 'text' : 'password'} 
+                  placeholder="Enter Password" 
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', paddingRight: '40px', width: '100%', height: '42px', boxSizing: 'border-box' }}
+                />
+                <button 
+                  type="button" 
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            {loginError && (
+              <div style={{
+                color: 'var(--color-error)',
+                fontSize: '0.85rem',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                padding: '10px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <AlertTriangle size={16} />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              className="pg-btn" 
+              style={{
+                width: '100%',
+                height: '42px',
+                backgroundColor: 'var(--color-primary)',
+                color: 'white',
+                fontWeight: 'bold',
+                border: 'none',
+                marginTop: '10px'
+              }}
+            >
+              Sign In
+            </button>
+          </form>
+        </div>
+
+        <div style={{
+          position: 'absolute',
+          bottom: '20px',
+          right: '20px',
+          fontSize: '0.75rem',
+          color: 'var(--text-muted)',
+          textAlign: 'right',
+          fontFamily: 'monospace',
+          maxWidth: '300px',
+          lineHeight: '1.4'
+        }}>
+          Desigend and developed by Vishal Gorvadiya, AAO, O/o The Cheif PMG, Ahd.
+        </div>
+      </div>
+    );
+  }
+
+  if (currentUser && currentUser.needs_password_change) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: 'var(--bg-app)',
+        fontFamily: 'var(--font-sans)',
+        padding: '20px',
+        position: 'relative'
+      }}>
+        <div style={{
+          width: '100%',
+          maxWidth: '450px',
+          backgroundColor: 'var(--bg-card)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '40px',
+          boxShadow: 'var(--shadow-premium)',
+          border: '1px solid var(--border-color)',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🔑</div>
+          <h1 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '1.5rem',
+            fontWeight: 800,
+            color: 'var(--text-primary)',
+            marginBottom: '10px'
+          }}>Change Password</h1>
+          <p style={{
+            fontSize: '0.85rem',
+            color: 'var(--text-secondary)',
+            marginBottom: '30px',
+            lineHeight: '1.4'
+          }}>
+            For security reasons, you are required to change your password from the default <strong>Ahd@12345</strong> before accessing the dashboard.
+          </p>
+
+          <form onSubmit={handlePasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>New Password</label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type="password" 
+                  placeholder="Enter New Password" 
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Confirm New Password</label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type="password" 
+                  placeholder="Confirm New Password" 
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            {passwordChangeError && (
+              <div style={{
+                color: 'var(--color-error)',
+                fontSize: '0.85rem',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                padding: '10px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <AlertTriangle size={16} />
+                <span>{passwordChangeError}</span>
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              className="pg-btn" 
+              style={{
+                width: '100%',
+                height: '42px',
+                backgroundColor: 'var(--color-primary)',
+                color: 'white',
+                fontWeight: 'bold',
+                border: 'none',
+                marginTop: '10px'
+              }}
+            >
+              Update Password
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-container">
       
@@ -1661,11 +2195,43 @@ export default function App() {
           <h1>🪙 CEBAR - Circle Expenditure, Budget and Accounting Review</h1>
           <p>Real-time expenditure tracking, budget variance analysis, and vertical revenue comparison report</p>
         </div>
-        <div className="header-right">
+        <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          {currentUser && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem' }}>
+              <span className="user-badge" style={{
+                backgroundColor: 'var(--bg-input)',
+                border: '1px solid var(--border-color)',
+                padding: '4px 10px',
+                borderRadius: 'var(--radius-sm)',
+                fontWeight: 600,
+                color: 'var(--text-secondary)'
+              }}>
+                👤 {currentUser.name.toUpperCase()} ({currentUser.type})
+              </span>
+              <button 
+                onClick={handleLogout}
+                className="pg-btn"
+                style={{
+                  height: '32px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  color: 'var(--color-error)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer'
+                }}
+                title="Log Out"
+              >
+                <LogOut size={14} /> Logout
+              </button>
+            </div>
+          )}
           <button 
             className="theme-toggle-btn" 
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             title="Toggle Theme"
+            style={{ height: '32px', width: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
@@ -1704,6 +2270,14 @@ export default function App() {
           >
             <Coins size={16} /> Vertical Revenue
           </button>
+          {currentUser && currentUser.type === 'SA' && (
+            <button 
+              className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+              onClick={() => setActiveTab('users')}
+            >
+              <User size={16} /> User Management
+            </button>
+          )}
         </div>
 
         {/* Global Search Inputs based on active Tab */}
@@ -2842,11 +3416,340 @@ export default function App() {
           </>
         )}
 
+        {/* Tab 4: User Management View (SA only) */}
+        {activeTab === 'users' && currentUser && currentUser.type === 'SA' && (
+          <>
+            <div className="card-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem' }}>
+              <div>
+                <h2>User Management</h2>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                  Create, edit, reset passwords, and delete user credentials.
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  resetUserManagementForm();
+                  setShowUserModal(true);
+                }}
+                className="pg-btn"
+                style={{
+                  backgroundColor: 'var(--color-primary)',
+                  color: 'white',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 'bold',
+                  height: '38px',
+                  padding: '0 1.25rem'
+                }}
+              >
+                <Plus size={16} /> Add User
+              </button>
+            </div>
+
+            <div className="table-wrapper" style={{ marginTop: '1.5rem' }}>
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th>User ID</th>
+                    <th>Name</th>
+                    <th>Mobile No.</th>
+                    <th>Office</th>
+                    <th>Type</th>
+                    <th>Status / Password</th>
+                    <th style={{ textAlign: 'center' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usersList.map((u) => {
+                    const isMaster = u.user_id === '10032853';
+                    const isSA = u.type === 'SA';
+                    const canDelete = !isMaster && (!isSA || currentUser.user_id === '10032853');
+
+                    return (
+                      <tr key={u.user_id}>
+                        <td>
+                          <code style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{u.user_id}</code>
+                          {isMaster && (
+                            <span style={{
+                              marginLeft: '8px',
+                              fontSize: '0.7rem',
+                              backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                              color: '#818cf8',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontWeight: 'bold'
+                            }}>
+                              MASTER
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ fontWeight: 500 }}>{u.name}</td>
+                        <td>{u.mobile_no}</td>
+                        <td>{u.office}</td>
+                        <td>
+                          <span style={{
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            backgroundColor: u.type === 'SA' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                            color: u.type === 'SA' ? '#f87171' : '#34d399'
+                          }}>
+                            {u.type}
+                          </span>
+                        </td>
+                        <td>
+                          {u.needs_password_change ? (
+                            <span style={{ color: 'var(--color-warning)', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Key size={12} /> Default (Requires Change)
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--color-success)', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <CheckCircle size={12} /> Set
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                            <button 
+                              onClick={() => handleEditClick(u)}
+                              className="pg-btn"
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: '0.8rem',
+                                border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-input)',
+                                color: 'var(--text-primary)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              disabled={isMaster && currentUser.user_id !== '10032853'}
+                            >
+                              <Edit size={12} /> Edit
+                            </button>
+                            <button 
+                              onClick={() => handleResetUserPassword(u.user_id)}
+                              className="pg-btn"
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: '0.8rem',
+                                border: '1px solid var(--color-warning)',
+                                color: 'var(--color-warning)',
+                                backgroundColor: 'transparent',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              disabled={isMaster}
+                            >
+                              <RefreshCw size={12} /> Reset Pass
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteUser(u.user_id)}
+                              className="pg-btn"
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: '0.8rem',
+                                border: '1px solid rgba(239, 68, 68, 0.4)',
+                                color: 'var(--color-error)',
+                                backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              disabled={!canDelete}
+                              title={isMaster ? 'Master user cannot be deleted' : (!canDelete ? 'Only Master user can delete SA users' : '')}
+                            >
+                              <Trash2 size={12} /> Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Modal Dialog for Add/Edit User */}
+            {showUserModal && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.65)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999,
+                padding: '20px'
+              }}>
+                <div style={{
+                  backgroundColor: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-lg)',
+                  width: '100%',
+                  maxWidth: '480px',
+                  padding: '30px',
+                  boxShadow: 'var(--shadow-premium)'
+                }}>
+                  <h3 style={{ fontSize: '1.25rem', marginBottom: '1.25rem' }}>
+                    {isEditingUser ? 'Edit User Details' : 'Add New User'}
+                  </h3>
+
+                  <form onSubmit={handleCreateOrUpdateUser} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>User ID (8-digit)</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. 10032853" 
+                        className="custom-input"
+                        value={manageUserId}
+                        onChange={(e) => setManageUserId(e.target.value.replace(/\D/g, '').substring(0, 8))}
+                        disabled={isEditingUser}
+                        style={{ height: '38px', width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Name</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. GORVADIYA" 
+                        className="custom-input"
+                        value={manageName}
+                        onChange={(e) => setManageName(e.target.value)}
+                        style={{ height: '38px', width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Mobile No. (10-digit)</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. 9033201981" 
+                        className="custom-input"
+                        value={manageMobileNo}
+                        onChange={(e) => setManageMobileNo(e.target.value.replace(/\D/g, '').substring(0, 10))}
+                        style={{ height: '38px', width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Office</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. CO Ahd" 
+                        className="custom-input"
+                        value={manageOffice}
+                        onChange={(e) => setManageOffice(e.target.value)}
+                        style={{ height: '38px', width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>User Type</label>
+                      <select 
+                        className="custom-select" 
+                        value={manageType}
+                        onChange={(e) => setManageType(e.target.value)}
+                        disabled={manageUserId === '10032853'}
+                        style={{ height: '38px', width: '100%' }}
+                      >
+                        <option value="View">View (Reader)</option>
+                        <option value="SA">SA (Administrator)</option>
+                      </select>
+                    </div>
+
+                    {!isEditingUser && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-input)', padding: '8px 12px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                        ℹ️ New users are assigned the default password <strong>Ahd@12345</strong> and must change it on their first login.
+                      </div>
+                    )}
+
+                    {userManagementError && (
+                      <div style={{
+                        color: 'var(--color-error)',
+                        fontSize: '0.8rem',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        padding: '10px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <AlertTriangle size={14} />
+                        <span>{userManagementError}</span>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '1rem' }}>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setShowUserModal(false);
+                          resetUserManagementForm();
+                        }}
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-secondary)'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        type="submit" 
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'var(--color-primary)',
+                          color: 'white',
+                          border: 'none',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        Save User
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
       </main>
       
       {/* 6. Footer */}
-      <footer style={{ textAlign: 'center', padding: '1rem 0', color: 'var(--text-muted)', fontSize: '0.8rem', borderTop: '1px solid var(--border-color)' }}>
-        CEBAR Database Dashboard • Synchronized with Supabase database (Real-time mode active)
+      <footer style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '1rem 1.5rem',
+        color: 'var(--text-muted)',
+        fontSize: '0.8rem',
+        borderTop: '1px solid var(--border-color)',
+        flexWrap: 'wrap',
+        gap: '10px'
+      }}>
+        <div>
+          CEBAR Database Dashboard • Synchronized with Supabase database (Real-time mode active)
+        </div>
+        <div style={{
+          textAlign: 'right',
+          fontFamily: 'monospace',
+          color: 'var(--text-muted)',
+          fontSize: '0.75rem'
+        }}>
+          Desigend and developed by Vishal Gorvadiya, AAO, O/o The Cheif PMG, Ahd.
+        </div>
       </footer>
     </div>
   );
