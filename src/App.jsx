@@ -1740,18 +1740,12 @@ export default function App() {
       setSyncProgress('Upload complete! Finalizing synchronization...');
       setSyncSuccess(true);
       
-      // Alert Data Saved
-      alert('Data Saved');
-
       // Clear sync states
       setSyncFile(null);
       setSyncHeaders([]);
       setParsedRows([]);
       setColumnMapping({});
       setFileInputKey(Date.now());
-
-      // Reload dashboard data so it is visible immediately!
-      window.location.reload();
     } catch (err) {
       console.error('Database Sync Error:', err);
       setSyncError(`Sync failed: ${err.message || err}`);
@@ -4153,57 +4147,99 @@ export default function App() {
                 </div>
               )}
 
-              {/* Status and Log messaging */}
-              {syncProgress && (
+            {/* Database Sync Overlay Modal (centered popup) */}
+            {(isSyncing || !!syncError || syncSuccess) && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10000,
+                padding: '20px'
+              }}>
                 <div style={{
-                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                  color: '#93c5fd',
-                  padding: '12px 16px',
-                  borderRadius: '4px',
-                  border: '1px solid rgba(59, 130, 246, 0.2)',
-                  fontSize: '0.85rem',
+                  backgroundColor: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-lg)',
+                  width: '100%',
+                  maxWidth: '450px',
+                  padding: '30px',
+                  boxShadow: 'var(--shadow-premium)',
+                  textAlign: 'center',
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '8px'
+                  gap: '20px'
                 }}>
-                  <RefreshCw size={16} className={isSyncing ? 'spin' : ''} />
-                  <span>{syncProgress}</span>
-                </div>
-              )}
+                  {isSyncing && (
+                    <>
+                      <div className="spinner" style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-primary)' }}></div>
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Synchronizing Database</h3>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{syncProgress}</p>
+                    </>
+                  )}
 
-              {syncError && (
-                <div style={{
-                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                  color: '#f87171',
-                  padding: '12px 16px',
-                  borderRadius: '4px',
-                  border: '1px solid rgba(239, 68, 68, 0.2)',
-                  fontSize: '0.85rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <AlertTriangle size={16} />
-                  <span>{syncError}</span>
-                </div>
-              )}
+                  {syncError && (
+                    <>
+                      <AlertTriangle size={48} style={{ color: 'var(--color-error)' }} />
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--color-error)' }}>Sync Failed</h3>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', wordBreak: 'break-word' }}>{syncError}</p>
+                      <button 
+                        onClick={() => {
+                          setSyncError('');
+                          setIsSyncing(false);
+                          setSyncProgress('');
+                        }}
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'var(--color-primary)',
+                          color: 'white',
+                          border: 'none',
+                          fontWeight: 'bold',
+                          width: '100%',
+                          height: '38px',
+                          marginTop: '10px'
+                        }}
+                      >
+                        Close
+                      </button>
+                    </>
+                  )}
 
-              {syncSuccess && (
-                <div style={{
-                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                  color: '#34d399',
-                  padding: '12px 16px',
-                  borderRadius: '4px',
-                  border: '1px solid rgba(16, 185, 129, 0.2)',
-                  fontSize: '0.85rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <CheckCircle size={16} />
-                  <span>Data Saved Successfully! Dashboard is updating...</span>
+                  {syncSuccess && (
+                    <>
+                      <CheckCircle size={48} style={{ color: 'var(--color-success)' }} />
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--color-success)' }}>Data Saved</h3>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>The financial records have been successfully saved to Supabase.</p>
+                      <button 
+                        onClick={() => {
+                          setSyncSuccess(false);
+                          setSyncProgress('');
+                          window.location.reload();
+                        }}
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'var(--color-success)',
+                          color: 'white',
+                          border: 'none',
+                          fontWeight: 'bold',
+                          width: '100%',
+                          height: '38px',
+                          marginTop: '10px'
+                        }}
+                      >
+                        OK
+                      </button>
+                    </>
+                  )}
                 </div>
-              )}
+              </div>
+            )}
             </div>
           </>
         )}
