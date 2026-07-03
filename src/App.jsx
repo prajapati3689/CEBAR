@@ -272,6 +272,7 @@ function ColumnHeaderFilter({ title, columnName, allValues, selectedFilters, onC
             ) : (
               filteredVals.map(val => {
                 const isChecked = selectedFilters ? selectedFilters.has(val) : false;
+                const displayVal = columnName === 'Category' ? translateCategoryVal(val) : val;
                 return (
                   <label key={val} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-primary)' }}>
                     <input 
@@ -280,7 +281,7 @@ function ColumnHeaderFilter({ title, columnName, allValues, selectedFilters, onC
                       onChange={(e) => handleCheckboxChange(val, e.target.checked)}
                       style={{ cursor: 'pointer' }}
                     />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={val}>{val}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={displayVal}>{displayVal}</span>
                   </label>
                 );
               })
@@ -291,6 +292,280 @@ function ColumnHeaderFilter({ title, columnName, allValues, selectedFilters, onC
     </div>
   );
 }
+
+// Category translation utility
+const translateCategoryVal = (val) => {
+  const categoryDisplayNames = {
+    'CCS': 'CCS',
+    'FS': 'FS',
+    'IRGB': 'IRGB',
+    'MO': 'MO',
+    'Parcel': 'Parcel',
+    'PLI': 'PLI(4% of total)',
+    'PLI Direct Cost': 'PLI-Direct Cost',
+    'RPLI': 'RPLI(4% of total)',
+    'RPLI Direct Cost': 'RPLI-Direct Cost'
+  };
+  return categoryDisplayNames[val] || val;
+};
+
+// SVG-based responsive Chart Components
+function SVGPieChart({ data, colors }) {
+  const total = data.reduce((sum, item) => sum + (item.value || 0), 0);
+  if (total === 0) return <div style={{ color: 'var(--text-muted)', padding: '20px', fontSize: '0.85rem' }}>No data to display</div>;
+
+  let accumulatedAngle = 0;
+  const radius = 80;
+  const cx = 90;
+  const cy = 90;
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
+      <svg width="180" height="180" viewBox="0 0 180 180">
+        {data.map((item, idx) => {
+          if (!item.value || item.value <= 0) return null;
+          const percentage = item.value / total;
+          const angle = percentage * 360;
+          
+          const x1 = cx + radius * Math.cos((accumulatedAngle - 90) * Math.PI / 180);
+          const y1 = cy + radius * Math.sin((accumulatedAngle - 90) * Math.PI / 180);
+          
+          accumulatedAngle += angle;
+          
+          const x2 = cx + radius * Math.cos((accumulatedAngle - 90) * Math.PI / 180);
+          const y2 = cy + radius * Math.sin((accumulatedAngle - 90) * Math.PI / 180);
+          
+          const largeArcFlag = angle > 180 ? 1 : 0;
+          const pathData = `
+            M ${cx} ${cy}
+            L ${x1} ${y1}
+            A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}
+            Z
+          `;
+          
+          const color = colors[idx % colors.length];
+          return (
+            <path 
+              key={idx}
+              d={pathData} 
+              fill={color} 
+              stroke="var(--bg-card)" 
+              strokeWidth="1.5"
+              style={{ transition: 'opacity 0.2s', cursor: 'pointer' }}
+            >
+              <title>{item.label}: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(item.value)} ({(percentage * 100).toFixed(1)}%)</title>
+            </path>
+          );
+        })}
+      </svg>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignSelf: 'center', textAlign: 'left', maxWidth: '280px', fontSize: '0.8rem' }}>
+        {data.map((item, idx) => {
+          if (!item.value || item.value <= 0) return null;
+          const color = colors[idx % colors.length];
+          return (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: color, borderRadius: '2px', flexShrink: 0 }}></span>
+              <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.label}>
+                {item.label}: <strong>{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(item.value)}</strong> ({(item.value / total * 100).toFixed(1)}%)
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SVGBarChart({ data, colors }) {
+  const maxVal = Math.max(...data.map(item => Math.max(item.value || 0, item.value2 || 0)), 1);
+  const chartHeight = 220;
+  const chartWidth = 550;
+  const paddingLeft = 60;
+  const paddingRight = 20;
+  const paddingTop = 20;
+  const paddingBottom = 40;
+  const graphHeight = chartHeight - paddingTop - paddingBottom;
+  const graphWidth = chartWidth - paddingLeft - paddingRight;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', padding: '10px' }}>
+      <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ maxWidth: '650px' }}>
+        {/* Y Axis Gridlines and Labels */}
+        {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
+          const y = paddingTop + graphHeight * (1 - ratio);
+          const gridVal = new Intl.NumberFormat('en-IN', { notation: 'compact', compactDisplay: 'short' }).format(maxVal * ratio);
+          return (
+            <g key={idx}>
+              <line x1={paddingLeft} y1={y} x2={chartWidth - paddingRight} y2={y} stroke="rgba(255,255,255,0.06)" strokeDasharray="3" />
+              <text x={paddingLeft - 10} y={y + 3} fill="var(--text-muted)" fontSize="9" textAnchor="end">{gridVal}</text>
+            </g>
+          );
+        })}
+
+        {/* Bars */}
+        {data.map((item, idx) => {
+          const x = paddingLeft + (graphWidth / data.length) * idx;
+          const barWidth = (graphWidth / data.length) * 0.65;
+          const barSpacing = (graphWidth / data.length) * 0.175;
+          
+          const bar1Height = ((item.value || 0) / maxVal) * graphHeight;
+          const bar1Y = paddingTop + graphHeight - bar1Height;
+          const color1 = colors[0 % colors.length];
+
+          const hasTwoBars = item.value2 !== undefined;
+          const singleBarWidth = hasTwoBars ? barWidth / 2 - 2 : barWidth;
+
+          return (
+            <g key={idx}>
+              {/* Bar 1 */}
+              <rect 
+                x={x + barSpacing} 
+                y={bar1Y} 
+                width={singleBarWidth} 
+                height={bar1Height} 
+                fill={color1} 
+                rx="3"
+                style={{ transition: 'all 0.3s', cursor: 'pointer' }}
+              >
+                <title>{item.label}: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(item.value)}</title>
+              </rect>
+
+              {/* Bar 2 */}
+              {hasTwoBars && (
+                <rect 
+                  x={x + barSpacing + singleBarWidth + 4} 
+                  y={paddingTop + graphHeight - ((item.value2 || 0) / maxVal) * graphHeight} 
+                  width={singleBarWidth} 
+                  height={((item.value2 || 0) / maxVal) * graphHeight} 
+                  fill={colors[1 % colors.length]} 
+                  rx="3"
+                  style={{ transition: 'all 0.3s', cursor: 'pointer' }}
+                >
+                  <title>{item.label} (Allotted/P2): {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(item.value2)}</title>
+                </rect>
+              )}
+
+              {/* Label */}
+              <text 
+                x={x + barSpacing + barWidth / 2} 
+                y={chartHeight - paddingBottom + 16} 
+                fill="var(--text-secondary)" 
+                fontSize="9" 
+                textAnchor="middle"
+              >
+                {item.label.length > 10 ? item.label.substring(0, 9) + '..' : item.label}
+              </text>
+            </g>
+          );
+        })}
+        {/* X Axis line */}
+        <line x1={paddingLeft} y1={chartHeight - paddingBottom} x2={chartWidth - paddingRight} y2={chartHeight - paddingBottom} stroke="var(--border-color)" />
+      </svg>
+    </div>
+  );
+}
+
+function SVGLineChart({ data, colors }) {
+  const maxVal = Math.max(...data.map(item => Math.max(item.value || 0, item.value2 || 0)), 1);
+  const chartHeight = 220;
+  const chartWidth = 550;
+  const paddingLeft = 60;
+  const paddingRight = 20;
+  const paddingTop = 20;
+  const paddingBottom = 40;
+  const graphHeight = chartHeight - paddingTop - paddingBottom;
+  const graphWidth = chartWidth - paddingLeft - paddingRight;
+
+  const points1 = data.map((item, idx) => {
+    const x = paddingLeft + (graphWidth / (data.length - 1 || 1)) * idx;
+    const y = paddingTop + graphHeight - ((item.value || 0) / maxVal) * graphHeight;
+    return `${x},${y}`;
+  }).join(' ');
+
+  const pathD1 = points1 ? `M ${points1}` : '';
+
+  const hasLine2 = data.some(item => item.value2 !== undefined);
+  const points2 = hasLine2 ? data.map((item, idx) => {
+    const x = paddingLeft + (graphWidth / (data.length - 1 || 1)) * idx;
+    const y = paddingTop + graphHeight - ((item.value2 || 0) / maxVal) * graphHeight;
+    return `${x},${y}`;
+  }).join(' ') : '';
+  const pathD2 = points2 ? `M ${points2}` : '';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', padding: '10px' }}>
+      <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ maxWidth: '650px' }}>
+        {/* Y Gridlines and Labels */}
+        {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
+          const y = paddingTop + graphHeight * (1 - ratio);
+          const gridVal = new Intl.NumberFormat('en-IN', { notation: 'compact', compactDisplay: 'short' }).format(maxVal * ratio);
+          return (
+            <g key={idx}>
+              <line x1={paddingLeft} y1={y} x2={chartWidth - paddingRight} y2={y} stroke="rgba(255,255,255,0.06)" strokeDasharray="3" />
+              <text x={paddingLeft - 10} y={y + 3} fill="var(--text-muted)" fontSize="9" textAnchor="end">{gridVal}</text>
+            </g>
+          );
+        })}
+
+        {/* Path Line 1 */}
+        {pathD1 && (
+          <path 
+            d={pathD1} 
+            fill="none" 
+            stroke={colors[0 % colors.length]} 
+            strokeWidth="3" 
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+
+        {/* Path Line 2 */}
+        {hasLine2 && pathD2 && (
+          <path 
+            d={pathD2} 
+            fill="none" 
+            stroke={colors[1 % colors.length]} 
+            strokeWidth="3" 
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+
+        {/* Dots & Labels */}
+        {data.map((item, idx) => {
+          const x = paddingLeft + (graphWidth / (data.length - 1 || 1)) * idx;
+          const y1 = paddingTop + graphHeight - ((item.value || 0) / maxVal) * graphHeight;
+          const y2 = hasLine2 ? paddingTop + graphHeight - ((item.value2 || 0) / maxVal) * graphHeight : 0;
+
+          return (
+            <g key={idx}>
+              {/* Dot 1 */}
+              <circle cx={x} cy={y1} r="4" fill={colors[0 % colors.length]} stroke="var(--bg-card)" strokeWidth="1.5" style={{ cursor: 'pointer' }}>
+                <title>{item.label}: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(item.value)}</title>
+              </circle>
+
+              {/* Dot 2 */}
+              {hasLine2 && (
+                <circle cx={x} cy={y2} r="4" fill={colors[1 % colors.length]} stroke="var(--bg-card)" strokeWidth="1.5" style={{ cursor: 'pointer' }}>
+                  <title>{item.label} (Allotted/P2): {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(item.value2)}</title>
+                </circle>
+              )}
+
+              {/* X Label */}
+              <text x={x} y={chartHeight - paddingBottom + 16} fill="var(--text-secondary)" fontSize="9" textAnchor="middle">
+                {item.label.length > 10 ? item.label.substring(0, 9) + '..' : item.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* X Axis line */}
+        <line x1={paddingLeft} y1={chartHeight - paddingBottom} x2={chartWidth - paddingRight} y2={chartHeight - paddingBottom} stroke="var(--border-color)" />
+      </svg>
+    </div>
+  );
+}
+
 
 const BUDGET_COLUMNS = [
   'Year',
@@ -441,6 +716,20 @@ export default function App() {
   // Search by percentage consumed
   const [pctSearchVal, setPctSearchVal] = useState('');
   const [pctSearchType, setPctSearchType] = useState('apt'); // 'apt' / 'elekha'
+
+  // Analysis Mode State
+  const [isAnalysisMode, setIsAnalysisMode] = useState(false);
+  const [selectedAnalysisType, setSelectedAnalysisType] = useState('all'); // 'all', 'over', 'under', 'no_allotment'
+
+  // Chart Mode State for Budget
+  const [isChartMode, setIsChartMode] = useState(false);
+  const [selectedChartType, setSelectedChartType] = useState('pie'); // 'pie', 'bar', 'line'
+  const [selectedChartGroupBy, setSelectedChartGroupBy] = useState('region'); // 'region', 'status', 'hoa'
+  const [selectedChartMetric, setSelectedChartMetric] = useState('consumed'); // 'consumed', 'alloted', 'elekha'
+
+  // Chart Mode State for Vertical Revenue
+  const [isRevenueChartMode, setIsRevenueChartMode] = useState(false);
+  const [selectedRevenueChartType, setSelectedRevenueChartType] = useState('bar'); // 'bar', 'line', 'pie'
 
   const [budgetPageInput, setBudgetPageInput] = useState('1');
   const [elekhaPageInput, setElekhaPageInput] = useState('1');
@@ -688,8 +977,8 @@ export default function App() {
         // Default month for standard filters
         if (sortedMonths.length > 0) {
           const latestMonth = sortedMonths[sortedMonths.length - 1];
-          setSelectedMonth(latestMonth); // Set latest month
-          setElekhaColumnFilters({ Month: new Set([latestMonth]) }); // Initialize Column Filter with latest month
+          setSelectedMonth('All'); // Show all data by default
+          setElekhaColumnFilters({}); // No initial month filter (shows all data)
           
           // Default Period settings for Vertical Revenue
           setP1From(sortedMonths[0]);
@@ -782,11 +1071,12 @@ export default function App() {
     return map;
   }, [elekhaData]);
 
-  // e-Lekha filtered data (computed locally in React)
-  const filteredElekhaData = useMemo(() => {
+  // Helper for cascading filters on e-Lekha
+  const getFilteredElekhaDataForColumn = (excludeColumnName) => {
     return elekhaData.filter(row => {
-      // 1. Column filters (checks for selected values)
+      // 1. Column filters (checks for selected values, excluding the active column)
       for (const [colName, selectedSet] of Object.entries(elekhaColumnFilters)) {
+        if (colName === excludeColumnName) continue;
         if (selectedSet && selectedSet.size > 0) {
           const val = (row[colName] === undefined || row[colName] === null) ? '' : String(row[colName]).trim();
           if (!selectedSet.has(val)) {
@@ -795,20 +1085,19 @@ export default function App() {
         }
       }
 
-      // 2. Month Filter (Handled dynamically by column header filter check list)
-      // 3. Region Filter
+      // 2. Region Filter
       if (filterRegion !== 'All' && row.Region !== filterRegion) {
         return false;
       }
-      // 4. DDO Code Filter
+      // 3. DDO Code Filter
       if (filterDdoCode.trim() !== '') {
         if (String(row['DDO Code']).trim() !== filterDdoCode.trim()) return false;
       }
-      // 5. HOA Filter
+      // 4. HOA Filter
       if (filterHoa.trim() !== '') {
         if (!String(row.HOA).includes(filterHoa.trim())) return false;
       }
-      // 6. Global Search (searches Region, DDO, HO, Division, HOA, Description)
+      // 5. Global Search
       if (elekhaSearch.trim() !== '') {
         const search = elekhaSearch.toLowerCase();
         const regMatch = String(row.Region || '').toLowerCase().includes(search);
@@ -821,7 +1110,12 @@ export default function App() {
       }
       return true;
     });
-  }, [elekhaData, selectedMonth, filterRegion, filterDdoCode, filterHoa, elekhaSearch, elekhaColumnFilters]);
+  };
+
+  // e-Lekha filtered data (computed locally in React)
+  const filteredElekhaData = useMemo(() => {
+    return getFilteredElekhaDataForColumn('');
+  }, [elekhaData, filterRegion, filterDdoCode, filterHoa, elekhaSearch, elekhaColumnFilters]);
 
   // e-Lekha Paginated Data
   const paginatedElekhaData = useMemo(() => {
@@ -927,11 +1221,62 @@ export default function App() {
     return [...existingMappedRows, ...virtualRows];
   }, [budgetData, elekhaLookupMap, elekhaData]);
 
-  // Budget filtered data (computed locally in React)
-  const filteredBudgetData = useMemo(() => {
+  // Helper for cascading filters on Budget
+  const getFilteredDataForColumn = (excludeColumnName) => {
     return mappedBudgetData.filter(row => {
-      // 1. Column filters (checks for selected values)
+      // 1. Region filter
+      if (budgetRegion !== 'All' && row.Region !== budgetRegion) {
+        return false;
+      }
+
+      // 2. Search filter (searches by Name of Unit, Office ID, HOA, Description, Region)
+      if (budgetSearch.trim() !== '') {
+        const search = budgetSearch.toLowerCase();
+        const unitMatch = String(row['Name of Unit (HO/Division)'] || '').toLowerCase().includes(search);
+        const idMatch = String(row['Office ID'] || '').toLowerCase().includes(search);
+        const hoaMatch = String(row.HOA || '').toLowerCase().includes(search);
+        const descMatch = String(row.Description || '').toLowerCase().includes(search);
+        const regionMatch = String(row.Region || '').toLowerCase().includes(search);
+        if (!unitMatch && !idMatch && !hoaMatch && !descMatch && !regionMatch) return false;
+      }
+
+      // 3. Status filter (based on APT Consumed %)
+      if (budgetFilterStatus !== 'All') {
+        const pct = row['APT Consumed %'];
+        if (budgetFilterStatus === 'Over' && pct <= 100) return false;
+        if (budgetFilterStatus === 'Warning' && (pct < 85 || pct > 100)) return false;
+        if (budgetFilterStatus === 'Safe' && pct >= 85) return false;
+      }
+
+      // 4. Custom percentage search
+      if (pctSearchVal.trim() !== '') {
+        const targetPct = parseFloat(pctSearchVal);
+        if (!isNaN(targetPct)) {
+          const valToCompare = pctSearchType === 'apt' ? row['APT Consumed %'] : row['e-Lekha Consumed %'];
+          if (valToCompare < targetPct) {
+            return false;
+          }
+        }
+      }
+
+      // 5. Analysis filter (if active)
+      if (isAnalysisMode && selectedAnalysisType !== 'all') {
+        const aptAllotedVal = row['APT Alloted'];
+        const aptConsumedVal = row['APT Consumed'];
+        const elekhaConsumedVal = row['e-lekha Consumed'] || 0;
+        
+        if (selectedAnalysisType === 'over') {
+          if (!(aptAllotedVal > 0 && aptConsumedVal > aptAllotedVal)) return false;
+        } else if (selectedAnalysisType === 'under') {
+          if (!(aptAllotedVal > 0 && (aptConsumedVal / aptAllotedVal) <= 0.20)) return false;
+        } else if (selectedAnalysisType === 'no_allotment') {
+          if (!(aptAllotedVal === 0 && elekhaConsumedVal > 0)) return false;
+        }
+      }
+
+      // 6. Column filters (checks for selected values, excluding active column)
       for (const [colName, selectedSet] of Object.entries(budgetColumnFilters)) {
+        if (colName === excludeColumnName) continue;
         if (selectedSet && selectedSet.size > 0) {
           let val = '';
           if (colName === 'APT Consumed %' || colName === 'e-Lekha Consumed %') {
@@ -945,44 +1290,14 @@ export default function App() {
         }
       }
 
-      // 2. Region filter
-      if (budgetRegion !== 'All' && row.Region !== budgetRegion) {
-        return false;
-      }
-
-      // 3. Search filter (searches by Name of Unit, Office ID, HOA, Description, Region)
-      if (budgetSearch.trim() !== '') {
-        const search = budgetSearch.toLowerCase();
-        const unitMatch = String(row['Name of Unit (HO/Division)'] || '').toLowerCase().includes(search);
-        const idMatch = String(row['Office ID'] || '').toLowerCase().includes(search);
-        const hoaMatch = String(row.HOA || '').toLowerCase().includes(search);
-        const descMatch = String(row.Description || '').toLowerCase().includes(search);
-        const regionMatch = String(row.Region || '').toLowerCase().includes(search);
-        if (!unitMatch && !idMatch && !hoaMatch && !descMatch && !regionMatch) return false;
-      }
-
-      // 4. Status filter (based on APT Consumed %)
-      if (budgetFilterStatus !== 'All') {
-        const pct = row['APT Consumed %'];
-        if (budgetFilterStatus === 'Over' && pct <= 100) return false;
-        if (budgetFilterStatus === 'Warning' && (pct < 85 || pct > 100)) return false;
-        if (budgetFilterStatus === 'Safe' && pct >= 85) return false;
-      }
-
-      // 5. Custom percentage search
-      if (pctSearchVal.trim() !== '') {
-        const targetPct = parseFloat(pctSearchVal);
-        if (!isNaN(targetPct)) {
-          const valToCompare = pctSearchType === 'apt' ? row['APT Consumed %'] : row['e-Lekha Consumed %'];
-          if (valToCompare < targetPct) {
-            return false;
-          }
-        }
-      }
-
       return true;
     });
-  }, [mappedBudgetData, budgetSearch, budgetRegion, budgetFilterStatus, budgetColumnFilters, pctSearchVal, pctSearchType]);
+  };
+
+  // Budget filtered data (computed locally in React)
+  const filteredBudgetData = useMemo(() => {
+    return getFilteredDataForColumn('');
+  }, [mappedBudgetData, budgetSearch, budgetRegion, budgetFilterStatus, budgetColumnFilters, pctSearchVal, pctSearchType, isAnalysisMode, selectedAnalysisType]);
 
   // Budget Paginated Data
   const paginatedBudgetData = useMemo(() => {
@@ -1068,6 +1383,110 @@ export default function App() {
       regions: regions.size
     };
   }, [elekhaData]);
+
+  // Analysis Statistics
+  const analysisStats = useMemo(() => {
+    let overCount = 0, overAllotted = 0, overConsumed = 0;
+    let underCount = 0, underAllotted = 0, underConsumed = 0;
+    let noAllotCount = 0, noAllotConsumed = 0;
+
+    mappedBudgetData.forEach(row => {
+      if (budgetRegion !== 'All' && row.Region !== budgetRegion) return;
+      if (budgetSearch.trim() !== '') {
+        const search = budgetSearch.toLowerCase();
+        const unitMatch = String(row['Name of Unit (HO/Division)'] || '').toLowerCase().includes(search);
+        const idMatch = String(row['Office ID'] || '').toLowerCase().includes(search);
+        const hoaMatch = String(row.HOA || '').toLowerCase().includes(search);
+        const descMatch = String(row.Description || '').toLowerCase().includes(search);
+        const regionMatch = String(row.Region || '').toLowerCase().includes(search);
+        if (!unitMatch && !idMatch && !hoaMatch && !descMatch && !regionMatch) return;
+      }
+
+      const aptAllotedVal = row['APT Alloted'];
+      const aptConsumedVal = row['APT Consumed'];
+      const elekhaConsumedVal = row['e-lekha Consumed'] || 0;
+
+      if (aptAllotedVal > 0 && aptConsumedVal > aptAllotedVal) {
+        overCount++;
+        overAllotted += aptAllotedVal;
+        overConsumed += aptConsumedVal;
+      }
+
+      if (aptAllotedVal > 0 && (aptConsumedVal / aptAllotedVal) <= 0.20) {
+        underCount++;
+        underAllotted += aptAllotedVal;
+        underConsumed += aptConsumedVal;
+      }
+
+      if (aptAllotedVal === 0 && elekhaConsumedVal > 0) {
+        noAllotCount++;
+        noAllotConsumed += elekhaConsumedVal;
+      }
+    });
+
+    return {
+      overCount, overAllotted, overConsumed,
+      underCount, underAllotted, underConsumed,
+      noAllotCount, noAllotConsumed
+    };
+  }, [mappedBudgetData, budgetRegion, budgetSearch]);
+
+  // Aggregated Budget Chart Data
+  const budgetChartData = useMemo(() => {
+    if (selectedChartGroupBy === 'region') {
+      const regionData = {};
+      filteredBudgetData.forEach(row => {
+        const reg = row.Region || 'Unknown';
+        if (!regionData[reg]) regionData[reg] = { allotted: 0, consumed: 0, elekha: 0 };
+        regionData[reg].allotted += row['APT Alloted'] || 0;
+        regionData[reg].consumed += row['APT Consumed'] || 0;
+        regionData[reg].elekha += row['e-lekha Consumed'] || 0;
+      });
+
+      return Object.entries(regionData).map(([reg, vals]) => ({
+        label: reg,
+        value: selectedChartMetric === 'alloted' ? vals.allotted : selectedChartMetric === 'consumed' ? vals.consumed : vals.elekha,
+        value2: selectedChartMetric === 'consumed' ? vals.allotted : undefined
+      }));
+    }
+
+    if (selectedChartGroupBy === 'status') {
+      let safe = 0, warning = 0, over = 0;
+      filteredBudgetData.forEach(row => {
+        const pct = row['APT Consumed %'] || 0;
+        if (pct > 100) over++;
+        else if (pct >= 85) warning++;
+        else safe++;
+      });
+      return [
+        { label: 'Safe (< 85%)', value: safe },
+        { label: 'Warning (85%-100%)', value: warning },
+        { label: 'Over (> 100%)', value: over }
+      ];
+    }
+
+    if (selectedChartGroupBy === 'hoa') {
+      const hoaData = {};
+      filteredBudgetData.forEach(row => {
+        const hoa = row.HOA || 'Unknown';
+        if (!hoaData[hoa]) hoaData[hoa] = { allotted: 0, consumed: 0, elekha: 0 };
+        hoaData[hoa].allotted += row['APT Alloted'] || 0;
+        hoaData[hoa].consumed += row['APT Consumed'] || 0;
+        hoaData[hoa].elekha += row['e-lekha Consumed'] || 0;
+      });
+
+      return Object.entries(hoaData)
+        .map(([hoa, vals]) => ({
+          label: hoa,
+          value: selectedChartMetric === 'alloted' ? vals.allotted : selectedChartMetric === 'consumed' ? vals.consumed : vals.elekha,
+          value2: selectedChartMetric === 'consumed' ? vals.allotted : undefined
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10);
+    }
+
+    return [];
+  }, [filteredBudgetData, selectedChartGroupBy, selectedChartMetric]);
 
   // Compute the Matrix Data structure for the Vertical Revenue Report Comparison
   const verticalRevenueReportData = useMemo(() => {
@@ -1202,7 +1621,7 @@ export default function App() {
     });
 
     // Group rows by HOA Category
-    const categoriesOrder = ['CCS', 'FS', 'IRGB', 'MO', 'Parcel'].filter(cat => {
+    const categoriesOrder = ['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'PLI', 'PLI Direct Cost', 'RPLI', 'RPLI Direct Cost'].filter(cat => {
       const selectedCats = revenueColumnFilters['Category'];
       if (selectedCats && selectedCats.size > 0) {
         return selectedCats.has(cat);
@@ -1327,10 +1746,11 @@ export default function App() {
   // Category KPIs calculation for Vertical Revenue comparison tab
   const revenueKpis = useMemo(() => {
     if (!verticalRevenueReportData) return null;
-    const { uniqueUnits, categoriesOrder } = verticalRevenueReportData;
+    const { uniqueUnits } = verticalRevenueReportData;
     const result = {};
     
-    categoriesOrder.forEach(cat => {
+    const catsToCalc = ['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'PLI', 'PLI Direct Cost', 'RPLI', 'RPLI Direct Cost'];
+    catsToCalc.forEach(cat => {
       let p1Sum = 0;
       let p2Sum = 0;
       uniqueUnits.forEach(g => {
@@ -1339,17 +1759,44 @@ export default function App() {
       });
       result[cat] = { p1: p1Sum, p2: p2Sum };
     });
+
+    const kpiResult = {
+      CCS: result['CCS'] || { p1: 0, p2: 0 },
+      FS: result['FS'] || { p1: 0, p2: 0 },
+      IRGB: result['IRGB'] || { p1: 0, p2: 0 },
+      MO: result['MO'] || { p1: 0, p2: 0 },
+      Parcel: result['Parcel'] || { p1: 0, p2: 0 },
+      PLI: {
+        p1: (result['PLI']?.p1 || 0) + (result['PLI Direct Cost']?.p1 || 0),
+        p2: (result['PLI']?.p2 || 0) + (result['PLI Direct Cost']?.p2 || 0)
+      },
+      RPLI: {
+        p1: (result['RPLI']?.p1 || 0) + (result['RPLI Direct Cost']?.p1 || 0),
+        p2: (result['RPLI']?.p2 || 0) + (result['RPLI Direct Cost']?.p2 || 0)
+      }
+    };
     
     let grossP1 = 0;
     let grossP2 = 0;
-    categoriesOrder.forEach(cat => {
-      grossP1 += result[cat].p1;
-      grossP2 += result[cat].p2;
+    catsToCalc.forEach(cat => {
+      grossP1 += result[cat]?.p1 || 0;
+      grossP2 += result[cat]?.p2 || 0;
     });
-    result['Gross'] = { p1: grossP1, p2: grossP2 };
+    kpiResult['Gross'] = { p1: grossP1, p2: grossP2 };
     
-    return result;
+    return kpiResult;
   }, [verticalRevenueReportData]);
+
+  // Aggregated Vertical Revenue Chart Data (excluding Gross)
+  const revenueChartData = useMemo(() => {
+    if (!revenueKpis) return [];
+    const categories = ['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'PLI', 'RPLI'];
+    return categories.map(cat => ({
+      label: translateCategoryVal(cat),
+      value: revenueKpis[cat]?.p1 || 0,
+      value2: revenueKpis[cat]?.p2 || 0
+    }));
+  }, [revenueKpis]);
 
   // Period label helper method
   const getPeriodLabel = useCallback((periodNum) => {
@@ -2546,7 +2993,7 @@ export default function App() {
                     top: '100%',
                     right: 0,
                     marginTop: '8px',
-                    backgroundColor: 'var(--bg-card)',
+                    backgroundColor: 'var(--bg-input)',
                     border: '1px solid var(--border-color)',
                     borderRadius: 'var(--radius-sm)',
                     padding: '12px 16px',
@@ -2818,6 +3265,54 @@ export default function App() {
                   }}
                 />
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>% or more</span>
+
+                <button
+                  type="button"
+                  className={`pg-btn ${isAnalysisMode ? 'active' : ''}`}
+                  onClick={() => {
+                    setIsAnalysisMode(!isAnalysisMode);
+                    setSelectedAnalysisType('all');
+                    if (isChartMode) setIsChartMode(false);
+                  }}
+                  style={{
+                    height: '32px',
+                    padding: '0 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 'bold',
+                    backgroundColor: isAnalysisMode ? 'var(--color-primary)' : 'var(--bg-input)',
+                    color: isAnalysisMode ? 'white' : 'var(--text-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    marginLeft: '8px'
+                  }}
+                >
+                  <AlertTriangle size={14} /> Analysis
+                </button>
+
+                <button
+                  type="button"
+                  className={`pg-btn ${isChartMode ? 'active' : ''}`}
+                  onClick={() => {
+                    setIsChartMode(!isChartMode);
+                    if (isAnalysisMode) setIsAnalysisMode(false);
+                  }}
+                  style={{
+                    height: '32px',
+                    padding: '0 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 'bold',
+                    backgroundColor: isChartMode ? 'var(--color-primary)' : 'var(--bg-input)',
+                    color: isChartMode ? 'white' : 'var(--text-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)'
+                  }}
+                >
+                  <BarChart2 size={14} /> Chart
+                </button>
               </div>
 
               {/* Status & Region filters */}
@@ -2851,6 +3346,215 @@ export default function App() {
               </div>
             </div>
 
+            {/* Analysis Collapsible Panel */}
+            {isAnalysisMode && (
+              <div 
+                className="analysis-panel" 
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                  gap: '1.25rem',
+                  marginTop: '1rem',
+                  padding: '1.25rem',
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)'
+                }}
+              >
+                {/* Over-Utilized card */}
+                <div 
+                  className={`analysis-card ${selectedAnalysisType === 'over' ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedAnalysisType(selectedAnalysisType === 'over' ? 'all' : 'over');
+                    setBudgetPage(0);
+                  }}
+                  style={{
+                    backgroundColor: selectedAnalysisType === 'over' ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-card)',
+                    border: selectedAnalysisType === 'over' ? '2px solid var(--color-error)' : '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '1rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h4 style={{ color: 'var(--color-error)', fontWeight: 700, margin: 0 }}>Over-Utilized Units</h4>
+                    <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--color-error-bg)', color: 'var(--color-error)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                      {analysisStats.overCount} Units
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 10px 0' }}>
+                    Units where APT Consumed is &gt; 100% of APT Allotted.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                    <span>Allotted: <strong>{formatINR(analysisStats.overAllotted)}</strong></span>
+                    <span>Consumed: <strong>{formatINR(analysisStats.overConsumed)}</strong></span>
+                  </div>
+                </div>
+
+                {/* Under-Utilized card */}
+                <div 
+                  className={`analysis-card ${selectedAnalysisType === 'under' ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedAnalysisType(selectedAnalysisType === 'under' ? 'all' : 'under');
+                    setBudgetPage(0);
+                  }}
+                  style={{
+                    backgroundColor: selectedAnalysisType === 'under' ? 'rgba(249, 115, 22, 0.15)' : 'var(--bg-card)',
+                    border: selectedAnalysisType === 'under' ? '2px solid var(--color-warning)' : '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '1rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h4 style={{ color: 'var(--color-warning)', fontWeight: 700, margin: 0 }}>Not Utilized (0% - 20%)</h4>
+                    <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--color-warning-bg)', color: 'var(--color-warning)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                      {analysisStats.underCount} Units
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 10px 0' }}>
+                    Units where utilization is between 0% and 20% of allotment.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                    <span>Allotted: <strong>{formatINR(analysisStats.underAllotted)}</strong></span>
+                    <span>Consumed: <strong>{formatINR(analysisStats.underConsumed)}</strong></span>
+                  </div>
+                </div>
+
+                {/* Consumed without Allotment card */}
+                <div 
+                  className={`analysis-card ${selectedAnalysisType === 'no_allotment' ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedAnalysisType(selectedAnalysisType === 'no_allotment' ? 'all' : 'no_allotment');
+                    setBudgetPage(0);
+                  }}
+                  style={{
+                    backgroundColor: selectedAnalysisType === 'no_allotment' ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-card)',
+                    border: selectedAnalysisType === 'no_allotment' ? '2px solid var(--color-info)' : '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '1rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h4 style={{ color: 'var(--color-info)', fontWeight: 700, margin: 0 }}>Consumed Without Allotment</h4>
+                    <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--color-info-bg)', color: 'var(--color-info)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                      {analysisStats.noAllotCount} Units
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 10px 0' }}>
+                    Units where e-Lekha expenditure exists without any budget allotment.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                    <span>e-Lekha Consumed: <strong>{formatINR(analysisStats.noAllotConsumed)}</strong></span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Chart Collapsible Panel */}
+            {isChartMode && budgetChartData.length > 0 && (
+              <div 
+                className="chart-panel" 
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '1.5rem',
+                  marginTop: '1rem'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Group By</label>
+                      <select 
+                        className="custom-select" 
+                        value={selectedChartGroupBy} 
+                        onChange={(e) => {
+                          setSelectedChartGroupBy(e.target.value);
+                          if (e.target.value === 'status') {
+                            setSelectedChartType('pie'); // default status to pie
+                          }
+                        }}
+                        style={{ height: '32px', minWidth: '120px', padding: '2px 8px', fontSize: '0.8rem' }}
+                      >
+                        <option value="region">Region</option>
+                        <option value="status">Status</option>
+                        <option value="hoa">HOA Code (Top 10)</option>
+                      </select>
+                    </div>
+
+                    {selectedChartGroupBy !== 'status' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Metric</label>
+                        <select 
+                          className="custom-select" 
+                          value={selectedChartMetric} 
+                          onChange={(e) => setSelectedChartMetric(e.target.value)}
+                          style={{ height: '32px', minWidth: '180px', padding: '2px 8px', fontSize: '0.8rem' }}
+                        >
+                          <option value="consumed">APT Consumed vs Allotted</option>
+                          <option value="alloted">APT Allotted Only</option>
+                          <option value="elekha">e-Lekha Consumed Only</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', alignSelf: 'flex-end' }}>
+                    {['pie', 'bar', 'line'].map(t => (
+                      <button
+                        key={t}
+                        onClick={() => setSelectedChartType(t)}
+                        className={`pg-btn ${selectedChartType === t ? 'active' : ''}`}
+                        style={{
+                          height: '30px',
+                          padding: '0 12px',
+                          fontSize: '0.8rem',
+                          backgroundColor: selectedChartType === t ? 'var(--color-primary)' : 'var(--bg-input)'
+                        }}
+                      >
+                        {t.toUpperCase()} CHART
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedChartType === 'pie' ? (
+                  <SVGPieChart 
+                    data={budgetChartData} 
+                    colors={['#0ea5e9', '#10b981', '#f97316', '#a855f7', '#f43f5e', '#818cf8', '#a78bfa', '#ec4899', '#f59e0b', '#3b82f6']} 
+                  />
+                ) : selectedChartType === 'bar' ? (
+                  <SVGBarChart 
+                    data={budgetChartData} 
+                    colors={['#0ea5e9', '#f97316']} 
+                  />
+                ) : (
+                  <SVGLineChart 
+                    data={budgetChartData} 
+                    colors={['#0ea5e9', '#f97316']} 
+                  />
+                )}
+                {selectedChartType !== 'pie' && selectedChartGroupBy !== 'status' && selectedChartMetric === 'consumed' && (
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '15px', fontSize: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#0ea5e9', borderRadius: '2px' }}></span>
+                      <span>APT Consumed</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#f97316', borderRadius: '2px' }}></span>
+                      <span>APT Allotted</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="card-title-row" style={{ marginTop: '1rem' }}>
               <h2>Office Budget Utilization Summary</h2>
               <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
@@ -2867,7 +3571,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Office ID" 
                             columnName="Office ID" 
-                            allValues={budgetData.map(d => d['Office ID'])} 
+                            allValues={getFilteredDataForColumn('Office ID').map(d => d['Office ID'])} 
                             selectedFilters={budgetColumnFilters['Office ID']} 
                             onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -2876,7 +3580,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Name of Unit (HO/Division)" 
                             columnName="Name of Unit (HO/Division)" 
-                            allValues={budgetData.map(d => d['Name of Unit (HO/Division)'])} 
+                            allValues={getFilteredDataForColumn('Name of Unit (HO/Division)').map(d => d['Name of Unit (HO/Division)'])} 
                             selectedFilters={budgetColumnFilters['Name of Unit (HO/Division)']} 
                             onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -2885,7 +3589,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Region" 
                             columnName="Region" 
-                            allValues={budgetData.map(d => d.Region)} 
+                            allValues={getFilteredDataForColumn('Region').map(d => d.Region)} 
                             selectedFilters={budgetColumnFilters.Region} 
                             onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -2894,7 +3598,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="HOA" 
                             columnName="HOA" 
-                            allValues={budgetData.map(d => d.HOA)} 
+                            allValues={getFilteredDataForColumn('HOA').map(d => d.HOA)} 
                             selectedFilters={budgetColumnFilters.HOA} 
                             onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -2903,16 +3607,16 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Description" 
                             columnName="Description" 
-                            allValues={budgetData.map(d => d.Description)} 
+                            allValues={getFilteredDataForColumn('Description').map(d => d.Description)} 
                             selectedFilters={budgetColumnFilters.Description} 
                             onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
                         </th>
                         <th className="text-right">
                           <ColumnHeaderFilter 
-                            title="A+B-C-D+E-F+G" 
+                            title="APT Alloted" 
                             columnName="APT Alloted" 
-                            allValues={mappedBudgetData.map(d => String(d['APT Alloted'] || 0))} 
+                            allValues={getFilteredDataForColumn('APT Alloted').map(d => String(d['APT Alloted'] || 0))} 
                             selectedFilters={budgetColumnFilters['APT Alloted']} 
                             onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -2921,7 +3625,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="APT Consumed" 
                             columnName="APT Consumed" 
-                            allValues={mappedBudgetData.map(d => String(d['APT Consumed'] || 0))} 
+                            allValues={getFilteredDataForColumn('APT Consumed').map(d => String(d['APT Consumed'] || 0))} 
                             selectedFilters={budgetColumnFilters['APT Consumed']} 
                             onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -2930,7 +3634,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="e-Lekha Consumed" 
                             columnName="e-lekha Consumed" 
-                            allValues={mappedBudgetData.map(d => String(d['e-lekha Consumed'] || 0))} 
+                            allValues={getFilteredDataForColumn('e-lekha Consumed').map(d => String(d['e-lekha Consumed'] || 0))} 
                             selectedFilters={budgetColumnFilters['e-lekha Consumed']} 
                             onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -2939,7 +3643,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Diff. (APT - e-Lekha)" 
                             columnName="Diff. (APT - e-Lekha)" 
-                            allValues={mappedBudgetData.map(d => String(d['Diff. (APT - e-Lekha)'] || 0))} 
+                            allValues={getFilteredDataForColumn('Diff. (APT - e-Lekha)').map(d => String(d['Diff. (APT - e-Lekha)'] || 0))} 
                             selectedFilters={budgetColumnFilters['Diff. (APT - e-Lekha)']} 
                             onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -2948,7 +3652,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="APT Consumed %" 
                             columnName="APT Consumed %" 
-                            allValues={mappedBudgetData.map(d => typeof d['APT Consumed %'] === 'number' ? d['APT Consumed %'].toFixed(2) : String(d['APT Consumed %']))} 
+                            allValues={getFilteredDataForColumn('APT Consumed %').map(d => typeof d['APT Consumed %'] === 'number' ? d['APT Consumed %'].toFixed(2) : String(d['APT Consumed %']))} 
                             selectedFilters={budgetColumnFilters['APT Consumed %']} 
                             onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -2957,7 +3661,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="e-Lekha Consumed %" 
                             columnName="e-Lekha Consumed %" 
-                            allValues={mappedBudgetData.map(d => typeof d['e-Lekha Consumed %'] === 'number' ? d['e-Lekha Consumed %'].toFixed(2) : String(d['e-Lekha Consumed %']))} 
+                            allValues={getFilteredDataForColumn('e-Lekha Consumed %').map(d => typeof d['e-Lekha Consumed %'] === 'number' ? d['e-Lekha Consumed %'].toFixed(2) : String(d['e-Lekha Consumed %']))} 
                             selectedFilters={budgetColumnFilters['e-Lekha Consumed %']} 
                             onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3179,7 +3883,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Txn Date" 
                             columnName="Txn Date" 
-                            allValues={elekhaData.map(d => d['Txn Date'])} 
+                            allValues={getFilteredElekhaDataForColumn('Txn Date').map(d => d['Txn Date'])} 
                             selectedFilters={elekhaColumnFilters['Txn Date']} 
                             onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3188,7 +3892,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Month" 
                             columnName="Month" 
-                            allValues={elekhaData.map(d => d.Month)} 
+                            allValues={getFilteredElekhaDataForColumn('Month').map(d => d.Month)} 
                             selectedFilters={elekhaColumnFilters.Month} 
                             onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3197,7 +3901,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Region" 
                             columnName="Region" 
-                            allValues={elekhaData.map(d => d.Region)} 
+                            allValues={getFilteredElekhaDataForColumn('Region').map(d => d.Region)} 
                             selectedFilters={elekhaColumnFilters.Region} 
                             onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3206,7 +3910,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="DDO" 
                             columnName="DDO Code" 
-                            allValues={elekhaData.map(d => d['DDO Code'])} 
+                            allValues={getFilteredElekhaDataForColumn('DDO Code').map(d => d['DDO Code'])} 
                             selectedFilters={elekhaColumnFilters['DDO Code']} 
                             onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3215,7 +3919,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="HO" 
                             columnName="HO" 
-                            allValues={elekhaData.map(d => d.HO)} 
+                            allValues={getFilteredElekhaDataForColumn('HO').map(d => d.HO)} 
                             selectedFilters={elekhaColumnFilters.HO} 
                             onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3224,7 +3928,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Division" 
                             columnName="Division" 
-                            allValues={elekhaData.map(d => d.Division)} 
+                            allValues={getFilteredElekhaDataForColumn('Division').map(d => d.Division)} 
                             selectedFilters={elekhaColumnFilters.Division} 
                             onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3233,7 +3937,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="HOA" 
                             columnName="HOA" 
-                            allValues={elekhaData.map(d => d.HOA)} 
+                            allValues={getFilteredElekhaDataForColumn('HOA').map(d => d.HOA)} 
                             selectedFilters={elekhaColumnFilters.HOA} 
                             onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3242,7 +3946,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Description" 
                             columnName="Description" 
-                            allValues={elekhaData.map(d => d.Description)} 
+                            allValues={getFilteredElekhaDataForColumn('Description').map(d => d.Description)} 
                             selectedFilters={elekhaColumnFilters.Description} 
                             onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3251,7 +3955,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Receipts" 
                             columnName="Receipt (Rs.)" 
-                            allValues={elekhaData.map(d => String(d['Receipt (Rs.)'] || '0').trim())} 
+                            allValues={getFilteredElekhaDataForColumn('Receipt (Rs.)').map(d => String(d['Receipt (Rs.)'] || '0').trim())} 
                             selectedFilters={elekhaColumnFilters['Receipt (Rs.)']} 
                             onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3260,7 +3964,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Payments" 
                             columnName="Payment (Rs.)" 
-                            allValues={elekhaData.map(d => String(d['Payment (Rs.)'] || '0').trim())} 
+                            allValues={getFilteredElekhaDataForColumn('Payment (Rs.)').map(d => String(d['Payment (Rs.)'] || '0').trim())} 
                             selectedFilters={elekhaColumnFilters['Payment (Rs.)']} 
                             onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3269,7 +3973,7 @@ export default function App() {
                           <ColumnHeaderFilter 
                             title="Remark" 
                             columnName="Remark" 
-                            allValues={elekhaData.map(d => String(d['Remark'] || '').trim())} 
+                            allValues={getFilteredElekhaDataForColumn('Remark').map(d => String(d['Remark'] || '').trim())} 
                             selectedFilters={elekhaColumnFilters['Remark']} 
                             onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
                           />
@@ -3577,11 +4281,148 @@ export default function App() {
               </div>
             ) : (
               <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '1.25rem 0' }}>
+                {/* Vertical Revenue KPIs Summary Bar */}
+                {revenueKpis && (
+                  <div 
+                    className="budget-summary-bar" 
+                    style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
+                      gap: '0.75rem', 
+                      marginBottom: '1.5rem' 
+                    }}
+                  >
+                    {['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'PLI', 'RPLI', 'Gross'].map(cat => {
+                      const data = revenueKpis[cat] || { p1: 0, p2: 0 };
+                      const label = translateCategoryVal(cat);
+                      const isGross = cat === 'Gross';
+                      
+                      return (
+                        <div 
+                          key={cat} 
+                          className="budget-summary-card"
+                          style={{
+                            padding: '0.75rem',
+                            border: isGross ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
+                            backgroundColor: isGross ? 'rgba(14, 165, 233, 0.05)' : 'var(--bg-card)',
+                            boxShadow: 'var(--shadow-sm)'
+                          }}
+                        >
+                          <h5 style={{ fontSize: '0.75rem', margin: '0 0 6px 0', textTransform: 'uppercase', color: isGross ? 'var(--color-primary)' : 'var(--text-secondary)' }}>
+                            {label}
+                          </h5>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>P1:</span>
+                              <span>{formatINR(data.p1)}</span>
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>P2:</span>
+                              <span>{formatINR(data.p2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '1.25rem 0', flexWrap: 'wrap', gap: '1rem' }}>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                     Displaying Period comparison: <strong>Period 1</strong> vs <strong>Period 2</strong> (Grouped by {generatedConfig.groupBy === 'ho' ? 'HO' : generatedConfig.groupBy === 'division' ? 'Division' : 'Region'})
                   </div>
+                  
+                  <button
+                    type="button"
+                    className={`pg-btn ${isRevenueChartMode ? 'active' : ''}`}
+                    onClick={() => setIsRevenueChartMode(!isRevenueChartMode)}
+                    style={{
+                      height: '32px',
+                      padding: '0 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontWeight: 'bold',
+                      backgroundColor: isRevenueChartMode ? 'var(--color-primary)' : 'var(--bg-input)',
+                      color: isRevenueChartMode ? 'white' : 'var(--text-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)'
+                    }}
+                  >
+                    <BarChart2 size={14} /> Chart Options
+                  </button>
                 </div>
+
+                {/* Revenue Chart Collapsible Panel */}
+                {isRevenueChartMode && revenueChartData.length > 0 && (
+                  <div 
+                    className="chart-panel" 
+                    style={{
+                      backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '1.5rem',
+                      marginBottom: '1.5rem'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                      <div>
+                        <h4 style={{ margin: 0, color: 'var(--text-primary)' }}>Vertical Revenue Category Comparison</h4>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          Comparing total receipts of Period 1 (P1) vs Period 2 (P2) across categories.
+                        </p>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {['bar', 'line', 'pie'].map(t => (
+                          <button
+                            key={t}
+                            onClick={() => setSelectedRevenueChartType(t)}
+                            className={`pg-btn ${selectedRevenueChartType === t ? 'active' : ''}`}
+                            style={{
+                              height: '30px',
+                              padding: '0 12px',
+                              fontSize: '0.8rem',
+                              backgroundColor: selectedRevenueChartType === t ? 'var(--color-primary)' : 'var(--bg-input)'
+                            }}
+                          >
+                            {t.toUpperCase()} CHART
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {selectedRevenueChartType === 'pie' ? (
+                      <SVGPieChart 
+                        data={revenueChartData} 
+                        colors={['#38bdf8', '#34d399', '#f97316', '#a78bfa', '#fb7185', '#60a5fa', '#f472b6']} 
+                      />
+                    ) : selectedRevenueChartType === 'bar' ? (
+                      <SVGBarChart 
+                        data={revenueChartData} 
+                        colors={['#38bdf8', '#34d399']} 
+                      />
+                    ) : (
+                      <SVGLineChart 
+                        data={revenueChartData} 
+                        colors={['#38bdf8', '#34d399']} 
+                      />
+                    )}
+
+                    {selectedRevenueChartType !== 'pie' && (
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '15px', fontSize: '0.85rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#38bdf8', borderRadius: '2px' }}></span>
+                          <span>{getPeriodLabel(1)}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#34d399', borderRadius: '2px' }}></span>
+                          <span>{getPeriodLabel(2)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="table-wrapper">
                   <table className="premium-table">
@@ -3657,8 +4498,8 @@ export default function App() {
                     <tbody>
                       {verticalRevenueReportData.categoriesOrder.map(cat => {
                         const hoas = verticalRevenueReportData.groupedHoas[cat] || [];
-                        const clsRow = `rev-row-${cat.toLowerCase()}`;
-                        const clsTotal = `rev-row-${cat.toLowerCase()}-total`;
+                        const clsRow = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}`;
+                        const clsTotal = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}-total`;
 
                         return (
                           <React.Fragment key={cat}>
@@ -3667,7 +4508,7 @@ export default function App() {
                               const hoaCode = String(hoa['HOA Code'] || '').trim();
                               return (
                                 <tr key={hoaCode} className={clsRow}>
-                                  <td style={{ fontWeight: 600 }}>{cat}</td>
+                                  <td style={{ fontWeight: 600 }}>{translateCategoryVal(cat)}</td>
                                   <td><code>{hoaCode}</code></td>
                                   <td style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={hoa.Description}>
                                     {hoa.Description || '–'}
@@ -3695,7 +4536,7 @@ export default function App() {
 
                             {/* Subtotal row for Category */}
                             <tr className={clsTotal}>
-                              <td style={{ textTransform: 'uppercase' }}>{cat} Total</td>
+                              <td style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{translateCategoryVal(cat)} Total</td>
                               <td></td>
                               <td></td>
                               {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
