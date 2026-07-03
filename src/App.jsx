@@ -1862,36 +1862,6 @@ export default function App() {
     }
   }, [generatedConfig]);
 
-  // Render method for Vertical Revenue category KPIs
-  const renderRevenueKpis = () => {
-    if (!revenueKpis) return null;
-    const categories = ['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'Gross'];
-    return (
-      <div className="kpi-grid">
-        {categories.map(cat => {
-          const p1Val = revenueKpis[cat]?.p1 || 0;
-          const p2Val = revenueKpis[cat]?.p2 || 0;
-          return (
-            <div className="kpi-card" key={cat} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div className="kpi-info" style={{ width: '100%' }}>
-                <h4 style={{ textTransform: 'uppercase' }}>{cat === 'Gross' ? 'Gross Total' : `${cat} Category Total`}</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>{getPeriodLabel(1)}:</span>
-                    <strong style={{ color: 'var(--text-primary)' }}>{formatINR(p1Val)}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>{getPeriodLabel(2)}:</span>
-                    <strong style={{ color: 'var(--text-primary)' }}>{formatINR(p2Val)}</strong>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
 
   // Authentication Handlers
   const handleLogin = async (e) => {
@@ -2247,6 +2217,12 @@ export default function App() {
             if (syncTable === 'Budget') {
               if (col === 'Year') {
                 dbRecord[col] = val ? parseInt(String(val).replace(/\D/g, ''), 10) : null;
+              } else if (col === 'HOA') {
+                let hoaVal = val ? String(val).trim() : '';
+                if (hoaVal.includes('.')) {
+                  hoaVal = hoaVal.split('.')[0];
+                }
+                dbRecord[col] = hoaVal;
               } else if ([
                 'Allotted Budget (A)',
                 'Reallotted Budget (B)',
@@ -2267,6 +2243,12 @@ export default function App() {
               // e-Lekha formatting
               if (col === 'DDO Code' || col === 'TE Number') {
                 dbRecord[col] = val ? parseInt(String(val).replace(/\D/g, ''), 10) : null;
+              } else if (col === 'HOA') {
+                let hoaVal = val ? String(val).trim() : '';
+                if (hoaVal.includes('.')) {
+                  hoaVal = hoaVal.split('.')[0];
+                }
+                dbRecord[col] = hoaVal.substring(0, 15);
               } else if (col === 'Receipt (Rs.)' || col === 'Payment (Rs.)') {
                 dbRecord[col] = val ? String(val).trim() : '0';
               } else {
@@ -2560,18 +2542,16 @@ export default function App() {
       }
 
       // Subtotal Row
-      if (generatedConfig.reportType === 'Summary') {
-        const subtotalRow = [`${cat} Total`, '', ''];
-        uniqueUnits.forEach(g => {
-          const c1 = p1CatTotals[`${cat}_${g.name}`] || 0;
-          const c2 = p2CatTotals[`${cat}_${g.name}`] || 0;
-          subtotalRow.push(c1);
-          subtotalRow.push(c2);
-        });
-        subtotalRow.push(catP1Gross[cat] || 0);
-        subtotalRow.push(catP2Gross[cat] || 0);
-        csvRows.push(subtotalRow.map(r => `"${String(r).replace(/"/g, '""')}"`).join(','));
-      }
+      const subtotalRow = [`${cat} Total`, '', ''];
+      uniqueUnits.forEach(g => {
+        const c1 = p1CatTotals[`${cat}_${g.name}`] || 0;
+        const c2 = p2CatTotals[`${cat}_${g.name}`] || 0;
+        subtotalRow.push(c1);
+        subtotalRow.push(c2);
+      });
+      subtotalRow.push(catP1Gross[cat] || 0);
+      subtotalRow.push(catP2Gross[cat] || 0);
+      csvRows.push(subtotalRow.map(r => `"${String(r).replace(/"/g, '""')}"`).join(','));
     });
 
     // Grand Total Row
@@ -2680,16 +2660,14 @@ export default function App() {
       }
 
       // Subtotal Row
-      if (generatedConfig.reportType === 'Summary') {
-        html += `<tr class="${clsTotal}"><td class="${clsTotal}">${cat} Total</td><td></td><td></td>`;
-        uniqueUnits.forEach(g => {
-          const c1 = p1CatTotals[`${cat}_${g.name}`] || 0;
-          const c2 = p2CatTotals[`${cat}_${g.name}`] || 0;
-          html += `<td class="text-right">${c1 ? c1.toFixed(2) : '-'}</td><td class="text-right">${c2 ? c2.toFixed(2) : '-'}</td>`;
-        });
-        html += `<td class="text-right" style="font-weight:bold">${catP1Gross[cat] ? catP1Gross[cat].toFixed(2) : '-'}</td><td class="text-right" style="font-weight:bold">${catP2Gross[cat] ? catP2Gross[cat].toFixed(2) : '-'}</td>`;
-        html += `</tr>`;
-      }
+      html += `<tr class="${clsTotal}"><td class="${clsTotal}">${cat} Total</td><td></td><td></td>`;
+      uniqueUnits.forEach(g => {
+        const c1 = p1CatTotals[`${cat}_${g.name}`] || 0;
+        const c2 = p2CatTotals[`${cat}_${g.name}`] || 0;
+        html += `<td class="text-right">${c1 ? c1.toFixed(2) : '-'}</td><td class="text-right">${c2 ? c2.toFixed(2) : '-'}</td>`;
+      });
+      html += `<td class="text-right" style="font-weight:bold">${catP1Gross[cat] ? catP1Gross[cat].toFixed(2) : '-'}</td><td class="text-right" style="font-weight:bold">${catP2Gross[cat] ? catP2Gross[cat].toFixed(2) : '-'}</td>`;
+      html += `</tr>`;
     });
 
     // Grand Total Bottom Row
@@ -3230,8 +3208,6 @@ export default function App() {
           </div>
         </div>
       )}
-
-      {activeTab === 'revenue' && renderRevenueKpis()}
 
       {/* 5. Main Card Content Area */}
       <main className="main-card">
@@ -4576,30 +4552,28 @@ export default function App() {
                             })}
 
                             {/* Subtotal row for Category */}
-                            {generatedConfig.reportType === 'Summary' && (
-                              <tr className={clsTotal}>
-                                <td style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{translateCategoryVal(cat)} Total</td>
-                                <td></td>
-                                <td></td>
-                                {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
-                                  const catVal1 = verticalRevenueReportData.p1CatTotals[`${cat}_${g.name}`] || 0;
-                                  const catVal2 = verticalRevenueReportData.p2CatTotals[`${cat}_${g.name}`] || 0;
-                                  return (
-                                    <React.Fragment key={gIdx}>
-                                      <td className="text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>{formatTableValue(catVal1)}</td>
-                                      <td className="text-right">{formatTableValue(catVal2)}</td>
-                                    </React.Fragment>
-                                  );
-                                })}
-                                {/* Category Gross Total cells */}
-                                <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)', fontWeight: 'bold' }}>
-                                  {formatTableValue(verticalRevenueReportData.catP1Gross[cat] || 0)}
-                                </td>
-                                <td className="text-right" style={{ fontWeight: 'bold' }}>
-                                  {formatTableValue(verticalRevenueReportData.catP2Gross[cat] || 0)}
-                                </td>
-                              </tr>
-                            )}
+                            <tr className={clsTotal}>
+                              <td style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{translateCategoryVal(cat)} Total</td>
+                              <td></td>
+                              <td></td>
+                              {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
+                                const catVal1 = verticalRevenueReportData.p1CatTotals[`${cat}_${g.name}`] || 0;
+                                const catVal2 = verticalRevenueReportData.p2CatTotals[`${cat}_${g.name}`] || 0;
+                                return (
+                                  <React.Fragment key={gIdx}>
+                                    <td className="text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>{formatTableValue(catVal1)}</td>
+                                    <td className="text-right">{formatTableValue(catVal2)}</td>
+                                  </React.Fragment>
+                                );
+                              })}
+                              {/* Category Gross Total cells */}
+                              <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)', fontWeight: 'bold' }}>
+                                {formatTableValue(verticalRevenueReportData.catP1Gross[cat] || 0)}
+                              </td>
+                              <td className="text-right" style={{ fontWeight: 'bold' }}>
+                                {formatTableValue(verticalRevenueReportData.catP2Gross[cat] || 0)}
+                              </td>
+                            </tr>
                           </React.Fragment>
                         );
                       })}
