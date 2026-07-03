@@ -2218,11 +2218,16 @@ export default function App() {
               if (col === 'Year') {
                 dbRecord[col] = val ? parseInt(String(val).replace(/\D/g, ''), 10) : null;
               } else if (col === 'HOA') {
-                let hoaVal = val ? String(val).trim() : '';
-                if (hoaVal.includes('.')) {
-                  hoaVal = hoaVal.split('.')[0];
+                let hoaVal = '';
+                if (val !== undefined && val !== null && val !== '') {
+                  const num = Number(val);
+                  if (!isNaN(num)) {
+                    hoaVal = num.toFixed(0);
+                  } else {
+                    hoaVal = String(val).trim();
+                  }
                 }
-                if (hoaVal) {
+                if (hoaVal && /^\d+$/.test(hoaVal)) {
                   hoaVal = hoaVal.padStart(15, '0');
                 }
                 dbRecord[col] = hoaVal;
@@ -2247,11 +2252,16 @@ export default function App() {
               if (col === 'DDO Code' || col === 'TE Number') {
                 dbRecord[col] = val ? parseInt(String(val).replace(/\D/g, ''), 10) : null;
               } else if (col === 'HOA') {
-                let hoaVal = val ? String(val).trim() : '';
-                if (hoaVal.includes('.')) {
-                  hoaVal = hoaVal.split('.')[0];
+                let hoaVal = '';
+                if (val !== undefined && val !== null && val !== '') {
+                  const num = Number(val);
+                  if (!isNaN(num)) {
+                    hoaVal = num.toFixed(0);
+                  } else {
+                    hoaVal = String(val).trim();
+                  }
                 }
-                if (hoaVal) {
+                if (hoaVal && /^\d+$/.test(hoaVal)) {
                   hoaVal = hoaVal.padStart(15, '0');
                 }
                 dbRecord[col] = hoaVal.substring(0, 15);
