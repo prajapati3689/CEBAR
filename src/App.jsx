@@ -2222,6 +2222,9 @@ export default function App() {
                 if (hoaVal.includes('.')) {
                   hoaVal = hoaVal.split('.')[0];
                 }
+                if (hoaVal) {
+                  hoaVal = hoaVal.padStart(15, '0');
+                }
                 dbRecord[col] = hoaVal;
               } else if ([
                 'Allotted Budget (A)',
@@ -2247,6 +2250,9 @@ export default function App() {
                 let hoaVal = val ? String(val).trim() : '';
                 if (hoaVal.includes('.')) {
                   hoaVal = hoaVal.split('.')[0];
+                }
+                if (hoaVal) {
+                  hoaVal = hoaVal.padStart(15, '0');
                 }
                 dbRecord[col] = hoaVal.substring(0, 15);
               } else if (col === 'Receipt (Rs.)' || col === 'Payment (Rs.)') {
