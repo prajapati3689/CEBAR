@@ -903,49 +903,51 @@ export default function App() {
         };
 
         const elekha = elekhaRaw.map(row => {
-          let hoa = String(row.HOA || '').trim();
+          const originalHoa = String(row.HOA || '').trim();
+          let mappedHoa = originalHoa;
           const descClean = String(row.Description || '').trim().toLowerCase();
           
           if (elekhaToRevenueHoaMap[descClean]) {
-            hoa = elekhaToRevenueHoaMap[descClean];
+            mappedHoa = elekhaToRevenueHoaMap[descClean];
           } else if (descToHoaMap[descClean]) {
-            hoa = descToHoaMap[descClean];
+            mappedHoa = descToHoaMap[descClean];
           } else {
             // Custom rules for PLI, RPLI, PLI Direct Cost, RPLI Direct Cost
             if (descClean.includes('rpli') && (descClean.includes('direct cost') || descClean.includes('branch') || descClean.includes('allowance') || descClean.includes('salary') || descClean.includes('salaries') || descClean.includes('office expense') || descClean.includes('medical') || descClean.includes('dte') || descClean.includes('ltc'))) {
-              hoa = '3201031010901';
+              mappedHoa = '3201031010901';
             } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('direct cost') || descClean.includes('branch') || descClean.includes('allowance') || descClean.includes('salary') || descClean.includes('salaries') || descClean.includes('office expense') || descClean.includes('medical') || descClean.includes('dte') || descClean.includes('ltc'))) {
-              hoa = '3201031010801';
+              mappedHoa = '3201031010801';
             } else if (descClean.includes('rpli') && (descClean.includes('wla') || descClean.includes('whole life'))) {
-              hoa = '80140210201';
+              mappedHoa = '80140210201';
             } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('wla') || descClean.includes('whole life'))) {
-              hoa = '80140110201';
+              mappedHoa = '80140110201';
             } else if (descClean.includes('rpli') && (descClean.includes('cwla') || descClean.includes('convertible wla') || descClean.includes('convertible whole life'))) {
-              hoa = '80140210301';
+              mappedHoa = '80140210301';
             } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('cwla') || descClean.includes('convertible wla') || descClean.includes('convertible whole life'))) {
-              hoa = '80140110301';
+              mappedHoa = '80140110301';
             } else if (descClean.includes('rpli') && (descClean.includes('aea') || descClean.includes('anticipated ea') || descClean.includes('anticipated endowment'))) {
-              hoa = '80140210501';
+              mappedHoa = '80140210501';
             } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('aea') || descClean.includes('anticipated ea') || descClean.includes('anticipated endowment'))) {
-              hoa = '80140110501';
+              mappedHoa = '80140110501';
             } else if (descClean.includes('rpli') && (descClean.includes('cps') || descClean.includes('children'))) {
-              hoa = '80140210701';
+              mappedHoa = '80140210701';
             } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('cps') || descClean.includes('children'))) {
-              hoa = '80140110701';
+              mappedHoa = '80140110701';
             } else if (descClean.includes('pli') && descClean.includes('jea')) {
-              hoa = '80140110601';
+              mappedHoa = '80140110601';
             } else if (descClean.includes('rpli') && (descClean.includes('gy') || descClean.includes('gp') || descClean.includes('gram priya'))) {
-              hoa = '80140210601';
+              mappedHoa = '80140210601';
             } else if (descClean.includes('rpli') && (descClean.includes('ea') || descClean.includes('endowment')) && !descClean.includes('aea') && !descClean.includes('anticipated') && !descClean.includes('jea') && !descClean.includes('joint')) {
-              hoa = '80140210401';
+              mappedHoa = '80140210401';
             } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('ea') || descClean.includes('endowment')) && !descClean.includes('aea') && !descClean.includes('anticipated') && !descClean.includes('jea') && !descClean.includes('joint')) {
-              hoa = '80140110401';
+              mappedHoa = '80140110401';
             }
           }
           
           return {
             ...row,
-            HOA: hoa
+            HOA: originalHoa,
+            MappedHOA: mappedHoa
           };
         });
 
@@ -1579,7 +1581,7 @@ export default function App() {
     const len = elekhaData.length;
     for (let i = 0; i < len; i++) {
       const row = elekhaData[i];
-      const hoa = String(row.HOA || '').trim();
+      const hoa = String(row.MappedHOA || row.HOA || '').trim();
       const rawDdoCode = String(row['DDO Code'] || '').trim();
       const cleanDdoCode = rawDdoCode.split('.')[0]; // strip decimal parts e.g. 102472.0
       
