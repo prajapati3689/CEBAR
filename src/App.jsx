@@ -902,40 +902,18 @@ export default function App() {
           'magazine post': '120100101330000'
         };
 
+        const pliRpliDetails = hoas.filter(item => 
+          ['PLI', 'PLI Direct Cost', 'RPLI', 'RPLI Direct Cost'].includes(item.Category)
+        ).map(item => item['HOA Code']?.trim());
+
         const elekha = elekhaRaw.map(row => {
           const originalHoa = String(row.HOA || '').trim();
           let mappedHoa = originalHoa;
-          const descClean = String(row.Description || '').trim().toLowerCase();
           
-          // Custom rules for PLI, RPLI, PLI Direct Cost, RPLI Direct Cost
-          if (descClean.includes('rpli') && (descClean.includes('direct cost') || descClean.includes('branch') || descClean.includes('allowance') || descClean.includes('salary') || descClean.includes('salaries') || descClean.includes('office expense') || descClean.includes('medical') || descClean.includes('dte') || descClean.includes('ltc'))) {
-            mappedHoa = '3201031010901';
-          } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('direct cost') || descClean.includes('branch') || descClean.includes('allowance') || descClean.includes('salary') || descClean.includes('salaries') || descClean.includes('office expense') || descClean.includes('medical') || descClean.includes('dte') || descClean.includes('ltc'))) {
-            mappedHoa = '3201031010801';
-          } else if (descClean.includes('rpli') && (descClean.includes('wla') || descClean.includes('whole life'))) {
-            mappedHoa = '80140210201';
-          } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('wla') || descClean.includes('whole life'))) {
-            mappedHoa = '80140110201';
-          } else if (descClean.includes('rpli') && (descClean.includes('cwla') || descClean.includes('convertible wla') || descClean.includes('convertible whole life'))) {
-            mappedHoa = '80140210301';
-          } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('cwla') || descClean.includes('convertible wla') || descClean.includes('convertible whole life'))) {
-            mappedHoa = '80140110301';
-          } else if (descClean.includes('rpli') && (descClean.includes('aea') || descClean.includes('anticipated ea') || descClean.includes('anticipated endowment'))) {
-            mappedHoa = '80140210501';
-          } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('aea') || descClean.includes('anticipated ea') || descClean.includes('anticipated endowment'))) {
-            mappedHoa = '80140110501';
-          } else if (descClean.includes('rpli') && (descClean.includes('cps') || descClean.includes('children'))) {
-            mappedHoa = '80140210701';
-          } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('cps') || descClean.includes('children'))) {
-            mappedHoa = '80140110701';
-          } else if (descClean.includes('pli') && descClean.includes('jea')) {
-            mappedHoa = '80140110601';
-          } else if (descClean.includes('rpli') && (descClean.includes('gy') || descClean.includes('gp') || descClean.includes('gram priya'))) {
-            mappedHoa = '80140210601';
-          } else if (descClean.includes('rpli') && (descClean.includes('ea') || descClean.includes('endowment')) && !descClean.includes('aea') && !descClean.includes('anticipated') && !descClean.includes('jea') && !descClean.includes('joint')) {
-            mappedHoa = '80140210401';
-          } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('ea') || descClean.includes('endowment')) && !descClean.includes('aea') && !descClean.includes('anticipated') && !descClean.includes('jea') && !descClean.includes('joint')) {
-            mappedHoa = '80140110401';
+          // Match any e-Lekha HOA starting with PLI/RPLI detailed codes
+          const matchedDetailCode = pliRpliDetails.find(code => originalHoa.startsWith(code));
+          if (matchedDetailCode) {
+            mappedHoa = matchedDetailCode;
           }
           
           return {
