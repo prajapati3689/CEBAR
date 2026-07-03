@@ -96,6 +96,8 @@ body {
   justify-content: space-between;
   align-items: center;
   box-shadow: var(--shadow-premium);
+  position: relative;
+  z-index: 100;
 }
 
 .header-left h1 {
@@ -888,3 +890,113 @@ body {
 .budget-summary-card.rate .value {
   color: var(--color-accent);
 }
+
+/* Category-wise Row Colors for PLI and RPLI categories */
+
+/* PLI (Dark Mode) */
+.premium-table tr.rev-row-pli td {
+  background-color: rgba(99, 102, 241, 0.08) !important;
+  color: #818cf8 !important;
+}
+.premium-table tr.rev-row-pli-total td {
+  background-color: rgba(99, 102, 241, 0.2) !important;
+  color: #818cf8 !important;
+  font-weight: 700 !important;
+  border-top: 1px solid rgba(99, 102, 241, 0.25) !important;
+  border-bottom: 2px solid rgba(99, 102, 241, 0.35) !important;
+}
+
+/* PLI Direct Cost (Dark Mode) */
+.premium-table tr.rev-row-pli-direct-cost td {
+  background-color: rgba(79, 70, 229, 0.08) !important;
+  color: #6366f1 !important;
+}
+.premium-table tr.rev-row-pli-direct-cost-total td {
+  background-color: rgba(79, 70, 229, 0.2) !important;
+  color: #6366f1 !important;
+  font-weight: 700 !important;
+  border-top: 1px solid rgba(79, 70, 229, 0.25) !important;
+  border-bottom: 2px solid rgba(79, 70, 229, 0.35) !important;
+}
+
+/* RPLI (Dark Mode) */
+.premium-table tr.rev-row-rpli td {
+  background-color: rgba(139, 92, 246, 0.08) !important;
+  color: #a78bfa !important;
+}
+.premium-table tr.rev-row-rpli-total td {
+  background-color: rgba(139, 92, 246, 0.2) !important;
+  color: #a78bfa !important;
+  font-weight: 700 !important;
+  border-top: 1px solid rgba(139, 92, 246, 0.25) !important;
+  border-bottom: 2px solid rgba(139, 92, 246, 0.35) !important;
+}
+
+/* RPLI Direct Cost (Dark Mode) */
+.premium-table tr.rev-row-rpli-direct-cost td {
+  background-color: rgba(124, 58, 237, 0.08) !important;
+  color: #8b5cf6 !important;
+}
+.premium-table tr.rev-row-rpli-direct-cost-total td {
+  background-color: rgba(124, 58, 237, 0.2) !important;
+  color: #8b5cf6 !important;
+  font-weight: 700 !important;
+  border-top: 1px solid rgba(124, 58, 237, 0.25) !important;
+  border-bottom: 2px solid rgba(124, 58, 237, 0.35) !important;
+}
+
+/* Light Mode Overrides */
+
+/* PLI (Light Mode) */
+[data-theme="light"] .premium-table tr.rev-row-pli td {
+  background-color: rgba(99, 102, 241, 0.05) !important;
+  color: #4f46e5 !important;
+}
+[data-theme="light"] .premium-table tr.rev-row-pli-total td {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+  color: #4f46e5 !important;
+  font-weight: 700 !important;
+}
+
+/* PLI Direct Cost (Light Mode) */
+[data-theme="light"] .premium-table tr.rev-row-pli-direct-cost td {
+  background-color: rgba(79, 70, 229, 0.05) !important;
+  color: #4338ca !important;
+}
+[data-theme="light"] .premium-table tr.rev-row-pli-direct-cost-total td {
+  background-color: rgba(79, 70, 229, 0.12) !important;
+  color: #4338ca !important;
+  font-weight: 700 !important;
+}
+
+/* RPLI (Light Mode) */
+[data-theme="light"] .premium-table tr.rev-row-rpli td {
+  background-color: rgba(139, 92, 246, 0.05) !important;
+  color: #7c3aed !important;
+}
+[data-theme="light"] .premium-table tr.rev-row-rpli-total td {
+  background-color: rgba(139, 92, 246, 0.12) !important;
+  color: #7c3aed !important;
+  font-weight: 700 !important;
+}
+
+/* RPLI Direct Cost (Light Mode) */
+[data-theme="light"] .premium-table tr.rev-row-rpli-direct-cost td {
+  background-color: rgba(124, 58, 237, 0.05) !important;
+  color: #6d28d9 !important;
+}
+[data-theme="light"] .premium-table tr.rev-row-rpli-direct-cost-total td {
+  background-color: rgba(124, 58, 237, 0.12) !important;
+  color: #6d28d9 !important;
+  font-weight: 700 !important;
+}
+
+/* Analysis Card Hover */
+.analysis-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.analysis-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
