@@ -1616,8 +1616,13 @@ export default function App() {
       }
 
       if (!valStr || valStr === '-') continue;
-      const valAmount = parseFloat(valStr.replace(/,/g, '').trim());
+      let valAmount = parseFloat(valStr.replace(/,/g, '').trim());
       if (isNaN(valAmount)) continue;
+
+      // Apply 4% for PLI and RPLI categories
+      if (hoa.startsWith('801401') || hoa.startsWith('801402')) {
+        valAmount = valAmount * 0.04;
+      }
 
       const inP1 = isInPeriod(row, 1);
       const inP2 = isInPeriod(row, 2);
