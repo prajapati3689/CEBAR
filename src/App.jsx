@@ -910,6 +910,37 @@ export default function App() {
             hoa = elekhaToRevenueHoaMap[descClean];
           } else if (descToHoaMap[descClean]) {
             hoa = descToHoaMap[descClean];
+          } else {
+            // Custom rules for PLI, RPLI, PLI Direct Cost, RPLI Direct Cost
+            if (descClean.includes('rpli') && (descClean.includes('direct cost') || descClean.includes('branch') || descClean.includes('allowance') || descClean.includes('salary') || descClean.includes('salaries') || descClean.includes('office expense') || descClean.includes('medical') || descClean.includes('dte') || descClean.includes('ltc'))) {
+              hoa = '3201031010901';
+            } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('direct cost') || descClean.includes('branch') || descClean.includes('allowance') || descClean.includes('salary') || descClean.includes('salaries') || descClean.includes('office expense') || descClean.includes('medical') || descClean.includes('dte') || descClean.includes('ltc'))) {
+              hoa = '3201031010801';
+            } else if (descClean.includes('rpli') && (descClean.includes('wla') || descClean.includes('whole life'))) {
+              hoa = '80140210201';
+            } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('wla') || descClean.includes('whole life'))) {
+              hoa = '80140110201';
+            } else if (descClean.includes('rpli') && (descClean.includes('cwla') || descClean.includes('convertible wla') || descClean.includes('convertible whole life'))) {
+              hoa = '80140210301';
+            } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('cwla') || descClean.includes('convertible wla') || descClean.includes('convertible whole life'))) {
+              hoa = '80140110301';
+            } else if (descClean.includes('rpli') && (descClean.includes('aea') || descClean.includes('anticipated ea') || descClean.includes('anticipated endowment'))) {
+              hoa = '80140210501';
+            } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('aea') || descClean.includes('anticipated ea') || descClean.includes('anticipated endowment'))) {
+              hoa = '80140110501';
+            } else if (descClean.includes('rpli') && (descClean.includes('cps') || descClean.includes('children'))) {
+              hoa = '80140210701';
+            } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('cps') || descClean.includes('children'))) {
+              hoa = '80140110701';
+            } else if (descClean.includes('pli') && descClean.includes('jea')) {
+              hoa = '80140110601';
+            } else if (descClean.includes('rpli') && (descClean.includes('gy') || descClean.includes('gp') || descClean.includes('gram priya'))) {
+              hoa = '80140210601';
+            } else if (descClean.includes('rpli') && (descClean.includes('ea') || descClean.includes('endowment')) && !descClean.includes('aea') && !descClean.includes('anticipated') && !descClean.includes('jea') && !descClean.includes('joint')) {
+              hoa = '80140210401';
+            } else if (descClean.includes('pli') && !descClean.includes('rpli') && (descClean.includes('ea') || descClean.includes('endowment')) && !descClean.includes('aea') && !descClean.includes('anticipated') && !descClean.includes('jea') && !descClean.includes('joint')) {
+              hoa = '80140110401';
+            }
           }
           
           return {
@@ -1580,22 +1611,28 @@ export default function App() {
       if (!groupVal || groupVal.trim() === '') continue;
       unitsSet.add(groupVal);
 
-      // Check receipts value
-      const recStr = row['Receipt (Rs.)'];
-      if (!recStr || recStr === '-') continue;
-      const recVal = parseFloat(recStr.replace(/,/g, '').trim());
-      if (isNaN(recVal)) continue;
+      // Check receipts or payments value
+      let valStr = '';
+      if (hoa === '3201031010801' || hoa === '3201031010901') {
+        valStr = row['Payment (Rs.)'];
+      } else {
+        valStr = row['Receipt (Rs.)'];
+      }
+
+      if (!valStr || valStr === '-') continue;
+      const valAmount = parseFloat(valStr.replace(/,/g, '').trim());
+      if (isNaN(valAmount)) continue;
 
       const inP1 = isInPeriod(row, 1);
       const inP2 = isInPeriod(row, 2);
 
       if (inP1) {
         const key = `${hoa}_${groupVal}_1`;
-        valMap[key] = (valMap[key] || 0) + recVal;
+        valMap[key] = (valMap[key] || 0) + valAmount;
       }
       if (inP2) {
         const key = `${hoa}_${groupVal}_2`;
-        valMap[key] = (valMap[key] || 0) + recVal;
+        valMap[key] = (valMap[key] || 0) + valAmount;
       }
     }
 
@@ -2523,16 +2560,18 @@ export default function App() {
       }
 
       // Subtotal Row
-      const subtotalRow = [`${cat} Total`, '', ''];
-      uniqueUnits.forEach(g => {
-        const c1 = p1CatTotals[`${cat}_${g.name}`] || 0;
-        const c2 = p2CatTotals[`${cat}_${g.name}`] || 0;
-        subtotalRow.push(c1);
-        subtotalRow.push(c2);
-      });
-      subtotalRow.push(catP1Gross[cat] || 0);
-      subtotalRow.push(catP2Gross[cat] || 0);
-      csvRows.push(subtotalRow.map(r => `"${String(r).replace(/"/g, '""')}"`).join(','));
+      if (generatedConfig.reportType === 'Summary') {
+        const subtotalRow = [`${cat} Total`, '', ''];
+        uniqueUnits.forEach(g => {
+          const c1 = p1CatTotals[`${cat}_${g.name}`] || 0;
+          const c2 = p2CatTotals[`${cat}_${g.name}`] || 0;
+          subtotalRow.push(c1);
+          subtotalRow.push(c2);
+        });
+        subtotalRow.push(catP1Gross[cat] || 0);
+        subtotalRow.push(catP2Gross[cat] || 0);
+        csvRows.push(subtotalRow.map(r => `"${String(r).replace(/"/g, '""')}"`).join(','));
+      }
     });
 
     // Grand Total Row
@@ -2641,14 +2680,16 @@ export default function App() {
       }
 
       // Subtotal Row
-      html += `<tr class="${clsTotal}"><td class="${clsTotal}">${cat} Total</td><td></td><td></td>`;
-      uniqueUnits.forEach(g => {
-        const c1 = p1CatTotals[`${cat}_${g.name}`] || 0;
-        const c2 = p2CatTotals[`${cat}_${g.name}`] || 0;
-        html += `<td class="text-right">${c1 ? c1.toFixed(2) : '-'}</td><td class="text-right">${c2 ? c2.toFixed(2) : '-'}</td>`;
-      });
-      html += `<td class="text-right" style="font-weight:bold">${catP1Gross[cat] ? catP1Gross[cat].toFixed(2) : '-'}</td><td class="text-right" style="font-weight:bold">${catP2Gross[cat] ? catP2Gross[cat].toFixed(2) : '-'}</td>`;
-      html += `</tr>`;
+      if (generatedConfig.reportType === 'Summary') {
+        html += `<tr class="${clsTotal}"><td class="${clsTotal}">${cat} Total</td><td></td><td></td>`;
+        uniqueUnits.forEach(g => {
+          const c1 = p1CatTotals[`${cat}_${g.name}`] || 0;
+          const c2 = p2CatTotals[`${cat}_${g.name}`] || 0;
+          html += `<td class="text-right">${c1 ? c1.toFixed(2) : '-'}</td><td class="text-right">${c2 ? c2.toFixed(2) : '-'}</td>`;
+        });
+        html += `<td class="text-right" style="font-weight:bold">${catP1Gross[cat] ? catP1Gross[cat].toFixed(2) : '-'}</td><td class="text-right" style="font-weight:bold">${catP2Gross[cat] ? catP2Gross[cat].toFixed(2) : '-'}</td>`;
+        html += `</tr>`;
+      }
     });
 
     // Grand Total Bottom Row
@@ -4313,11 +4354,11 @@ export default function App() {
                           </h5>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                             <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between' }}>
-                              <span>P1:</span>
+                              <span>{getPeriodLabel(1)}:</span>
                               <span>{formatINR(data.p1)}</span>
                             </div>
                             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                              <span>P2:</span>
+                              <span>{getPeriodLabel(2)}:</span>
                               <span>{formatINR(data.p2)}</span>
                             </div>
                           </div>
@@ -4535,28 +4576,30 @@ export default function App() {
                             })}
 
                             {/* Subtotal row for Category */}
-                            <tr className={clsTotal}>
-                              <td style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{translateCategoryVal(cat)} Total</td>
-                              <td></td>
-                              <td></td>
-                              {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
-                                const catVal1 = verticalRevenueReportData.p1CatTotals[`${cat}_${g.name}`] || 0;
-                                const catVal2 = verticalRevenueReportData.p2CatTotals[`${cat}_${g.name}`] || 0;
-                                return (
-                                  <React.Fragment key={gIdx}>
-                                    <td className="text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>{formatTableValue(catVal1)}</td>
-                                    <td className="text-right">{formatTableValue(catVal2)}</td>
-                                  </React.Fragment>
-                                );
-                              })}
-                              {/* Category Gross Total cells */}
-                              <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)', fontWeight: 'bold' }}>
-                                {formatTableValue(verticalRevenueReportData.catP1Gross[cat] || 0)}
-                              </td>
-                              <td className="text-right" style={{ fontWeight: 'bold' }}>
-                                {formatTableValue(verticalRevenueReportData.catP2Gross[cat] || 0)}
-                              </td>
-                            </tr>
+                            {generatedConfig.reportType === 'Summary' && (
+                              <tr className={clsTotal}>
+                                <td style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{translateCategoryVal(cat)} Total</td>
+                                <td></td>
+                                <td></td>
+                                {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
+                                  const catVal1 = verticalRevenueReportData.p1CatTotals[`${cat}_${g.name}`] || 0;
+                                  const catVal2 = verticalRevenueReportData.p2CatTotals[`${cat}_${g.name}`] || 0;
+                                  return (
+                                    <React.Fragment key={gIdx}>
+                                      <td className="text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>{formatTableValue(catVal1)}</td>
+                                      <td className="text-right">{formatTableValue(catVal2)}</td>
+                                    </React.Fragment>
+                                  );
+                                })}
+                                {/* Category Gross Total cells */}
+                                <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)', fontWeight: 'bold' }}>
+                                  {formatTableValue(verticalRevenueReportData.catP1Gross[cat] || 0)}
+                                </td>
+                                <td className="text-right" style={{ fontWeight: 'bold' }}>
+                                  {formatTableValue(verticalRevenueReportData.catP2Gross[cat] || 0)}
+                                </td>
+                              </tr>
+                            )}
                           </React.Fragment>
                         );
                       })}
