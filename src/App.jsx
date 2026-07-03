@@ -303,7 +303,7 @@ const translateCategoryVal = (val) => {
     'Parcel': 'Parcel',
     'PLI': 'PLI(4% of total)',
     'PLI Direct Cost': 'PLI-Direct Cost',
-    'RPLI': 'RPLI(4% of total)',
+    'RPLI': 'RPLI(12% of total)',
     'RPLI Direct Cost': 'RPLI-Direct Cost'
   };
   return categoryDisplayNames[val] || val;
@@ -1597,9 +1597,11 @@ export default function App() {
       let valAmount = parseFloat(valStr.replace(/,/g, '').trim());
       if (isNaN(valAmount)) continue;
 
-      // Apply 4% for PLI and RPLI categories
-      if (hoa.startsWith('801401') || hoa.startsWith('801402')) {
+      // Apply 4% for PLI and 12% for RPLI categories
+      if (hoa.startsWith('801401')) {
         valAmount = valAmount * 0.04;
+      } else if (hoa.startsWith('801402')) {
+        valAmount = valAmount * 0.12;
       }
 
       const inP1 = isInPeriod(row, 1);
