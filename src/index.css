@@ -1000,3 +1000,12 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
+/* Helper for horizontal scrollbar at the top of the table */
+.table-wrapper.top-scrollbar {
+  transform: rotateX(180deg);
+  padding-bottom: 0;
+  padding-top: 120px;
+}
+.table-wrapper.top-scrollbar > table {
+  transform: rotateX(180deg);
+}

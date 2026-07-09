@@ -2702,9 +2702,7 @@ export default function App() {
   if (isLoading) {
     return (
       <div className="loader-container" style={{ minHeight: '80vh' }}>
-        <div className="spinner"></div>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}>Preparing CEBAR Dashboard</h2>
-        <p style={{ color: 'var(--text-secondary)' }}>Fetching real-time financial datasets from Supabase database...</p>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}>CEBAR is Loading</h2>
       </div>
     );
   }
@@ -3577,7 +3575,7 @@ export default function App() {
             </div>
 
               <>
-                <div className="table-wrapper">
+                <div className="table-wrapper top-scrollbar">
                   <table className="premium-table">
                     <thead>
                       <tr>
@@ -3889,7 +3887,7 @@ export default function App() {
             </div>
 
             <>
-              <div className="table-wrapper">
+              <div className="table-wrapper top-scrollbar">
                   <table className="premium-table">
                     <thead>
                       <tr>
@@ -4438,7 +4436,7 @@ export default function App() {
                   </div>
                 )}
 
-                <div className="table-wrapper">
+                <div className="table-wrapper top-scrollbar">
                   <table className="premium-table">
                     <thead>
                       <tr>
@@ -5218,14 +5216,6 @@ export default function App() {
       }}>
         <div>
           CEBAR Database Dashboard • Synchronized with Supabase database (Real-time mode active)
-        </div>
-        <div style={{
-          textAlign: 'right',
-          fontFamily: 'monospace',
-          color: 'var(--text-muted)',
-          fontSize: '0.75rem'
-        }}>
-          Desigend and developed by Vishal Gorvadiya, AAO, O/o The Cheif PMG, Ahd.
         </div>
       </footer>
     </div>
