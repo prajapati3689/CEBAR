@@ -2701,8 +2701,20 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <div className="loader-container" style={{ minHeight: '80vh' }}>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}>CEBAR is Loading</h2>
+      <div className="loader-container cebar-loader" style={{ minHeight: '80vh' }}>
+        <div className="loader-seal">
+          <div className="loader-ring loader-ring-outer"></div>
+          <div className="loader-ring loader-ring-inner"></div>
+          <span className="loader-coin" role="img" aria-label="CEBAR emblem">🪙</span>
+        </div>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, letterSpacing: '0.5px' }}>CEBAR is Loading</h2>
+        <p className="loader-subtext">Synchronizing Budget, e-Lekha &amp; Revenue records from Supabase&hellip;</p>
+        <div className="loader-progress-track">
+          <div className="loader-progress-bar"></div>
+        </div>
+        <div className="loader-dots">
+          <span></span><span></span><span></span>
+        </div>
       </div>
     );
   }
@@ -3172,33 +3184,6 @@ export default function App() {
             </div>
             <div className="kpi-icon-container remaining">
               <CheckCircle size={20} />
-            </div>
-          </div>
-          <div className="kpi-card">
-            <div className="kpi-info">
-              <h4>No. of HOA</h4>
-              <div className="kpi-value">{elekhaKpis.numHoas}</div>
-            </div>
-            <div className="kpi-icon-container ratio">
-              <BarChart2 size={20} />
-            </div>
-          </div>
-          <div className="kpi-card">
-            <div className="kpi-info">
-              <h4>No. of HO</h4>
-              <div className="kpi-value">{elekhaKpis.numHos}</div>
-            </div>
-            <div className="kpi-icon-container ratio">
-              <FileText size={20} />
-            </div>
-          </div>
-          <div className="kpi-card">
-            <div className="kpi-info">
-              <h4>No. of Division</h4>
-              <div className="kpi-value">{elekhaKpis.numDivs}</div>
-            </div>
-            <div className="kpi-icon-container ratio">
-              <Coins size={20} />
             </div>
           </div>
         </div>
@@ -3879,9 +3864,14 @@ export default function App() {
         {/* Tab 2: e-Lekha transactions list view */}
         {activeTab === 'elekha' && (
           <>
-            <div className="card-title-row">
-              <h2>e-Lekha Transactions Table</h2>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            <div className="card-title-row" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '1rem' }}>
+              <h2 style={{ margin: 0 }}>e-Lekha Transactions Table</h2>
+              <div className="elekha-inline-stats">
+                <span title="Unique Head of Accounts"><FileText size={13} /> HOA: <strong>{elekhaKpis.numHoas}</strong></span>
+                <span title="Unique Head Offices"><Coins size={13} /> HO: <strong>{elekhaKpis.numHos}</strong></span>
+                <span title="Unique Divisions"><BarChart2 size={13} /> Division: <strong>{elekhaKpis.numDivs}</strong></span>
+              </div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
                 Loaded <strong>{filteredElekhaData.length}</strong> matching transactions
               </div>
             </div>
