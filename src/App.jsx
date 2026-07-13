@@ -1141,7 +1141,8 @@ export default function App() {
         const divMatch = String(row.Division || '').toLowerCase().includes(search);
         const hoaMatch = String(row.HOA || '').toLowerCase().includes(search);
         const descMatch = String(row.Description || '').toLowerCase().includes(search);
-        if (!regMatch && !ddoMatch && !hoMatch && !divMatch && !hoaMatch && !descMatch) return false;
+        const teMatch = String(row['TE Number'] || '').toLowerCase().includes(search);
+        if (!regMatch && !ddoMatch && !hoMatch && !divMatch && !hoaMatch && !descMatch && !teMatch) return false;
       }
       return true;
     });
@@ -2459,13 +2460,13 @@ export default function App() {
   const handleExportElekhaCSV = () => {
     const csvRows = [];
     const header = [
-      'Txn Date', 'Month', 'Region', 'DDO Code', 'HO', 'Division', 'HOA', 'Description', 'Receipts', 'Payments', 'Remark'
+      'TE Number', 'Txn Date', 'Month', 'Region', 'DDO Code', 'HO', 'Division', 'HOA', 'Description', 'Receipts', 'Payments', 'Remark'
     ];
     csvRows.push(header.map(h => `"${h.replace(/"/g, '""')}"`).join(','));
 
     filteredElekhaData.forEach(row => {
       const line = [
-        row['Txn Date'], row['Month'], row['Region'], row['DDO Code'], row['HO'], row['Division'], row['HOA'], row['Description'],
+        row['TE Number'], row['Txn Date'], row['Month'], row['Region'], row['DDO Code'], row['HO'], row['Division'], row['HOA'], row['Description'],
         row['Receipt (Rs.)'], row['Payment (Rs.)'], row['Remark']
       ];
       csvRows.push(line.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(','));
@@ -2498,6 +2499,7 @@ export default function App() {
         <table>
           <thead>
             <tr>
+              <th>TE Number</th>
               <th>Txn Date</th>
               <th>Month</th>
               <th>Region</th>
@@ -2517,6 +2519,7 @@ export default function App() {
     filteredElekhaData.forEach(row => {
       html += `
         <tr>
+          <td>${row['TE Number'] || '–'}</td>
           <td>${row['Txn Date'] || '–'}</td>
           <td>${row['Month'] || '–'}</td>
           <td>${row['Region'] || '–'}</td>
@@ -3951,6 +3954,15 @@ export default function App() {
                       <tr>
                         <th>
                           <ColumnHeaderFilter 
+                            title="TE Number" 
+                            columnName="TE Number" 
+                            allValues={getFilteredElekhaDataForColumn('TE Number').map(d => String(d['TE Number'] || ''))} 
+                            selectedFilters={elekhaColumnFilters['TE Number']} 
+                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                          />
+                        </th>
+                        <th>
+                          <ColumnHeaderFilter 
                             title="Txn Date" 
                             columnName="Txn Date" 
                             allValues={getFilteredElekhaDataForColumn('Txn Date').map(d => d['Txn Date'])} 
@@ -4053,7 +4065,7 @@ export default function App() {
                     <tbody>
                       {filteredElekhaData.length === 0 ? (
                         <tr>
-                          <td colSpan={11} className="text-center" style={{ padding: '3rem', color: 'var(--text-secondary)' }}>
+                          <td colSpan={12} className="text-center" style={{ padding: '3rem', color: 'var(--text-secondary)' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                               <AlertCircle size={24} style={{ color: 'var(--color-warning)' }} />
                               <span style={{ fontWeight: 600 }}>No transactions found matching active filters.</span>
@@ -4063,6 +4075,7 @@ export default function App() {
                       ) : (
                         paginatedElekhaData.map((row, idx) => (
                           <tr key={idx}>
+                            <td>{row['TE Number'] || '–'}</td>
                             <td>{row['Txn Date'] || '–'}</td>
                             <td>{row['Month'] || '–'}</td>
                             <td>{row['Region'] || '–'}</td>
