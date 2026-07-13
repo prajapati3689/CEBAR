@@ -2750,8 +2750,24 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <div className="loader-container" style={{ minHeight: '80vh' }}>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}>CEBAR is Loading</h2>
+      <div className="loader-container cebar-loader" style={{ minHeight: '80vh' }}>
+        <div className="seal-loader">
+          <div className="seal-ring ring-outer"></div>
+          <div className="seal-ring ring-inner"></div>
+          <div className="seal-core">🪙</div>
+        </div>
+        <h2 className="loader-title">CEBAR</h2>
+        <p className="loader-subtitle">Reconciling Budget &amp; e-Lekha Ledgers…</p>
+        <div className="loader-progress-track">
+          <div className="loader-progress-fill"></div>
+        </div>
+        <div className="loader-steps">
+          <span>Budget</span>
+          <span className="loader-dot">•</span>
+          <span>e-Lekha</span>
+          <span className="loader-dot">•</span>
+          <span>Revenue Mapping</span>
+        </div>
       </div>
     );
   }
@@ -2884,7 +2900,7 @@ export default function App() {
                 width: '100%',
                 height: '42px',
                 backgroundColor: 'var(--color-primary)',
-                color: 'white',
+                color: '#14210f',
                 fontWeight: 'bold',
                 border: 'none',
                 marginTop: '10px'
@@ -3007,7 +3023,7 @@ export default function App() {
                 width: '100%',
                 height: '42px',
                 backgroundColor: 'var(--color-primary)',
-                color: 'white',
+                color: '#14210f',
                 fontWeight: 'bold',
                 border: 'none',
                 marginTop: '10px'
@@ -3223,33 +3239,6 @@ export default function App() {
               <CheckCircle size={20} />
             </div>
           </div>
-          <div className="kpi-card">
-            <div className="kpi-info">
-              <h4>No. of HOA</h4>
-              <div className="kpi-value">{elekhaKpis.numHoas}</div>
-            </div>
-            <div className="kpi-icon-container ratio">
-              <BarChart2 size={20} />
-            </div>
-          </div>
-          <div className="kpi-card">
-            <div className="kpi-info">
-              <h4>No. of HO</h4>
-              <div className="kpi-value">{elekhaKpis.numHos}</div>
-            </div>
-            <div className="kpi-icon-container ratio">
-              <FileText size={20} />
-            </div>
-          </div>
-          <div className="kpi-card">
-            <div className="kpi-info">
-              <h4>No. of Division</h4>
-              <div className="kpi-value">{elekhaKpis.numDivs}</div>
-            </div>
-            <div className="kpi-icon-container ratio">
-              <Coins size={20} />
-            </div>
-          </div>
         </div>
       )}
 
@@ -3347,7 +3336,7 @@ export default function App() {
                     gap: '6px',
                     fontWeight: 'bold',
                     backgroundColor: isAnalysisMode ? 'var(--color-primary)' : 'var(--bg-input)',
-                    color: isAnalysisMode ? 'white' : 'var(--text-secondary)',
+                    color: isAnalysisMode ? '#14210f' : 'var(--text-secondary)',
                     border: '1px solid var(--border-color)',
                     borderRadius: 'var(--radius-sm)',
                     marginLeft: '8px'
@@ -3371,7 +3360,7 @@ export default function App() {
                     gap: '6px',
                     fontWeight: 'bold',
                     backgroundColor: isChartMode ? 'var(--color-primary)' : 'var(--bg-input)',
-                    color: isChartMode ? 'white' : 'var(--text-secondary)',
+                    color: isChartMode ? '#14210f' : 'var(--text-secondary)',
                     border: '1px solid var(--border-color)',
                     borderRadius: 'var(--radius-sm)'
                   }}
@@ -3592,27 +3581,27 @@ export default function App() {
                 {selectedChartType === 'pie' ? (
                   <SVGPieChart 
                     data={budgetChartData} 
-                    colors={['#0ea5e9', '#10b981', '#f97316', '#a855f7', '#f43f5e', '#818cf8', '#a78bfa', '#ec4899', '#f59e0b', '#3b82f6']} 
+                    colors={['#c9a227', '#1f6f5c', '#a97e1f', '#4c7ea8', '#8a6d2f', '#2f9e6b', '#b08d3e', '#5c8ca0', '#d99a3d', '#6f8f7c']} 
                   />
                 ) : selectedChartType === 'bar' ? (
                   <SVGBarChart 
                     data={budgetChartData} 
-                    colors={['#0ea5e9', '#f97316']} 
+                    colors={['#c9a227', '#1f6f5c']} 
                   />
                 ) : (
                   <SVGLineChart 
                     data={budgetChartData} 
-                    colors={['#0ea5e9', '#f97316']} 
+                    colors={['#c9a227', '#1f6f5c']} 
                   />
                 )}
                 {selectedChartType !== 'pie' && selectedChartGroupBy !== 'status' && selectedChartMetric === 'consumed' && (
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '15px', fontSize: '0.85rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#0ea5e9', borderRadius: '2px' }}></span>
+                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#c9a227', borderRadius: '2px' }}></span>
                       <span>APT Consumed</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#f97316', borderRadius: '2px' }}></span>
+                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#1f6f5c', borderRadius: '2px' }}></span>
                       <span>APT Allotted</span>
                     </div>
                   </div>
@@ -3932,8 +3921,24 @@ export default function App() {
         {/* Tab 2: e-Lekha transactions list view */}
         {activeTab === 'elekha' && (
           <>
-            <div className="card-title-row">
+            <div className="card-title-row elekha-title-row">
               <h2>e-Lekha Transactions Table</h2>
+              <div className="elekha-inline-stats">
+                <div className="inline-stat">
+                  <span className="inline-stat-label">No. of HOA</span>
+                  <span className="inline-stat-value">{elekhaKpis.numHoas}</span>
+                </div>
+                <div className="inline-stat-divider"></div>
+                <div className="inline-stat">
+                  <span className="inline-stat-label">No. of HO</span>
+                  <span className="inline-stat-value">{elekhaKpis.numHos}</span>
+                </div>
+                <div className="inline-stat-divider"></div>
+                <div className="inline-stat">
+                  <span className="inline-stat-label">No. of Division</span>
+                  <span className="inline-stat-value">{elekhaKpis.numDivs}</span>
+                </div>
+              </div>
               <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                 Loaded <strong>{filteredElekhaData.length}</strong> matching transactions
               </div>
@@ -4284,7 +4289,7 @@ export default function App() {
                         fontWeight: 600,
                         cursor: 'pointer',
                         backgroundColor: groupBy === 'ho' ? 'var(--color-primary)' : 'var(--bg-input)',
-                        color: groupBy === 'ho' ? 'white' : 'var(--text-secondary)'
+                        color: groupBy === 'ho' ? '#14210f' : 'var(--text-secondary)'
                       }}
                     >
                       HO-wise
@@ -4298,7 +4303,7 @@ export default function App() {
                         fontWeight: 600,
                         cursor: 'pointer',
                         backgroundColor: groupBy === 'division' ? 'var(--color-primary)' : 'var(--bg-input)',
-                        color: groupBy === 'division' ? 'white' : 'var(--text-secondary)'
+                        color: groupBy === 'division' ? '#14210f' : 'var(--text-secondary)'
                       }}
                     >
                       Division-wise
@@ -4312,7 +4317,7 @@ export default function App() {
                         fontWeight: 600,
                         cursor: 'pointer',
                         backgroundColor: groupBy === 'region' ? 'var(--color-primary)' : 'var(--bg-input)',
-                        color: groupBy === 'region' ? 'white' : 'var(--text-secondary)'
+                        color: groupBy === 'region' ? '#14210f' : 'var(--text-secondary)'
                       }}
                     >
                       Region-wise
@@ -4328,7 +4333,7 @@ export default function App() {
                     height: '37px', 
                     padding: '0 1.5rem', 
                     backgroundColor: 'var(--color-primary)', 
-                    color: 'white',
+                    color: '#14210f',
                     fontWeight: 'bold',
                     border: 'none'
                   }}
@@ -4409,7 +4414,7 @@ export default function App() {
                       gap: '6px',
                       fontWeight: 'bold',
                       backgroundColor: isRevenueChartMode ? 'var(--color-primary)' : 'var(--bg-input)',
-                      color: isRevenueChartMode ? 'white' : 'var(--text-secondary)',
+                      color: isRevenueChartMode ? '#14210f' : 'var(--text-secondary)',
                       border: '1px solid var(--border-color)',
                       borderRadius: 'var(--radius-sm)'
                     }}
@@ -4460,28 +4465,28 @@ export default function App() {
                     {selectedRevenueChartType === 'pie' ? (
                       <SVGPieChart 
                         data={revenueChartData} 
-                        colors={['#38bdf8', '#34d399', '#f97316', '#a78bfa', '#fb7185', '#60a5fa', '#f472b6']} 
+                        colors={['#c9a227', '#1f6f5c', '#a97e1f', '#4c7ea8', '#8a6d2f', '#2f9e6b', '#b08d3e']} 
                       />
                     ) : selectedRevenueChartType === 'bar' ? (
                       <SVGBarChart 
                         data={revenueChartData} 
-                        colors={['#38bdf8', '#34d399']} 
+                        colors={['#c9a227', '#1f6f5c']} 
                       />
                     ) : (
                       <SVGLineChart 
                         data={revenueChartData} 
-                        colors={['#38bdf8', '#34d399']} 
+                        colors={['#c9a227', '#1f6f5c']} 
                       />
                     )}
 
                     {selectedRevenueChartType !== 'pie' && (
                       <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '15px', fontSize: '0.85rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#38bdf8', borderRadius: '2px' }}></span>
+                          <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#c9a227', borderRadius: '2px' }}></span>
                           <span>{getPeriodLabel(1)}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#34d399', borderRadius: '2px' }}></span>
+                          <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#1f6f5c', borderRadius: '2px' }}></span>
                           <span>{getPeriodLabel(2)}</span>
                         </div>
                       </div>
@@ -4701,7 +4706,7 @@ export default function App() {
                 className="pg-btn"
                 style={{
                   backgroundColor: 'var(--color-primary)',
-                  color: 'white',
+                  color: '#14210f',
                   border: 'none',
                   display: 'flex',
                   alignItems: 'center',
@@ -4977,7 +4982,7 @@ export default function App() {
                         className="pg-btn"
                         style={{
                           backgroundColor: 'var(--color-primary)',
-                          color: 'white',
+                          color: '#14210f',
                           border: 'none',
                           fontWeight: 'bold'
                         }}
@@ -5160,7 +5165,7 @@ export default function App() {
                       className="pg-btn"
                       style={{
                         backgroundColor: 'var(--color-primary)',
-                        color: 'white',
+                        color: '#14210f',
                         border: 'none',
                         fontWeight: 'bold',
                         height: '42px',
@@ -5229,7 +5234,7 @@ export default function App() {
                         className="pg-btn"
                         style={{
                           backgroundColor: 'var(--color-primary)',
-                          color: 'white',
+                          color: '#14210f',
                           border: 'none',
                           fontWeight: 'bold',
                           width: '100%',

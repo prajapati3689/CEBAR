@@ -1,60 +1,62 @@
-/* Custom Styling System for MIDAS Dashboard - Vanilla CSS */
+/* Custom Styling System for CEBAR Dashboard - "Chartered Ledger" Corporate Identity */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
 :root {
-  /* Theme variables (Modern Dark Mode with Cyan/Teal accents) */
-  --bg-app: #080d1a;
-  --bg-card: rgba(16, 24, 48, 0.6);
-  --bg-card-hover: rgba(24, 36, 72, 0.7);
-  --bg-input: #0f162e;
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-focus: #06b6d4;
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  /* Theme variables — Chartered Ledger: deep navy vault + brass/gold foil accents */
+  --bg-app: #0a1420;
+  --bg-card: rgba(17, 30, 48, 0.62);
+  --bg-card-hover: rgba(24, 40, 63, 0.78);
+  --bg-input: #101d30;
+  --border-color: rgba(201, 162, 75, 0.16);
+  --border-focus: #c9a227;
+  --text-primary: #f2ede1;
+  --text-secondary: #a8b7c9;
+  --text-muted: #64758a;
   
-  /* Brand colors */
-  --color-primary: #0ea5e9;
-  --color-primary-rgb: 14, 165, 233;
-  --color-accent: #06b6d4;
-  --color-gradient-start: #0f172a;
-  --color-gradient-end: #1e293b;
+  /* Brand colors — brass gold primary, deep ledger-emerald secondary */
+  --color-primary: #c9a227;
+  --color-primary-rgb: 201, 162, 39;
+  --color-accent: #1f6f5c;
+  --color-gradient-start: #0a1420;
+  --color-gradient-end: #182c46;
   
   /* Alert status colors */
-  --color-success: #10b981;
-  --color-success-bg: rgba(16, 185, 129, 0.15);
-  --color-warning: #f97316;
-  --color-warning-bg: rgba(249, 115, 22, 0.15);
-  --color-error: #ef4444;
-  --color-error-bg: rgba(239, 68, 68, 0.15);
-  --color-info: #3b82f6;
-  --color-info-bg: rgba(59, 130, 246, 0.15);
+  --color-success: #2f9e6b;
+  --color-success-bg: rgba(47, 158, 107, 0.15);
+  --color-warning: #d99a3d;
+  --color-warning-bg: rgba(217, 154, 61, 0.15);
+  --color-error: #c1554f;
+  --color-error-bg: rgba(193, 85, 79, 0.15);
+  --color-info: #4c7ea8;
+  --color-info-bg: rgba(76, 126, 168, 0.15);
   
   /* Font Family definitions */
-  --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
   
   /* Dimensions & Shadows */
-  --radius-lg: 16px;
-  --radius-md: 12px;
-  --radius-sm: 8px;
-  --shadow-premium: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 1px 1px rgba(255, 255, 255, 0.05) inset;
-  --shadow-glow: 0 0 20px rgba(6, 182, 212, 0.15);
+  --radius-lg: 14px;
+  --radius-md: 10px;
+  --radius-sm: 6px;
+  --shadow-premium: 0 10px 30px -10px rgba(0, 0, 0, 0.55), 0 1px 1px rgba(201, 162, 75, 0.06) inset;
+  --shadow-glow: 0 0 20px rgba(201, 162, 39, 0.18);
 }
 
-/* Light Mode Variables Override (if user toggles) */
+/* Light Mode Variables Override — "Ledger Paper" */
 [data-theme="light"] {
-  --bg-app: #f1f5f9;
-  --bg-card: rgba(255, 255, 255, 0.85);
-  --bg-card-hover: rgba(255, 255, 255, 0.95);
+  --bg-app: #f6f2e7;
+  --bg-card: rgba(255, 255, 255, 0.88);
+  --bg-card-hover: rgba(255, 255, 255, 0.98);
   --bg-input: #ffffff;
-  --border-color: rgba(0, 0, 0, 0.08);
-  --border-focus: #0284c7;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --shadow-premium: 0 8px 30px rgba(0, 0, 0, 0.05), 0 1px 1px rgba(255, 255, 255, 1) inset;
-  --color-gradient-start: #f8fafc;
-  --color-gradient-end: #cbd5e1;
+  --border-color: rgba(26, 35, 50, 0.1);
+  --border-focus: #a97e1f;
+  --text-primary: #1a2332;
+  --text-secondary: #4d5c70;
+  --text-muted: #8592a3;
+  --shadow-premium: 0 8px 28px rgba(26, 35, 50, 0.08), 0 1px 1px rgba(255, 255, 255, 1) inset;
+  --color-gradient-start: #f6f2e7;
+  --color-gradient-end: #e6dcc2;
 }
 
 /* General Resets & Layout */
@@ -71,8 +73,9 @@ body {
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
   background-image: 
-    radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.08) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(6, 182, 212, 0.08) 0px, transparent 50%);
+    radial-gradient(at 0% 0%, rgba(201, 162, 39, 0.07) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(31, 111, 92, 0.08) 0px, transparent 50%),
+    repeating-linear-gradient(180deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 44px);
   background-attachment: fixed;
   transition: background-color 0.3s ease, color 0.3s ease;
 }
@@ -89,6 +92,7 @@ body {
   background: var(--bg-card);
   backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
+  border-top: 3px solid var(--color-primary);
   border-radius: var(--radius-lg);
   padding: 1.5rem 2rem;
   margin-bottom: 2rem;
@@ -103,9 +107,9 @@ body {
 .header-left h1 {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 1.75rem;
-  letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #38bdf8, #06b6d4);
+  font-size: 1.8rem;
+  letter-spacing: -0.3px;
+  background: linear-gradient(120deg, #e8c766 0%, #c9a227 45%, #9c7a1a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   display: flex;
@@ -218,9 +222,10 @@ body {
 }
 
 .tab-btn.active {
-  color: #ffffff;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
-  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+  color: #14210f;
+  background: linear-gradient(135deg, var(--color-primary), #e2c15c);
+  box-shadow: 0 4px 12px rgba(201, 162, 39, 0.35);
+  font-weight: 700;
 }
 
 /* Filters & Inputs */
@@ -338,9 +343,10 @@ body {
 }
 
 .kpi-value {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.5rem;
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 1.9rem;
+  letter-spacing: -0.3px;
   color: var(--text-primary);
 }
 
@@ -355,7 +361,7 @@ body {
 .kpi-icon-container.allotted { background-color: rgba(59, 130, 246, 0.15); color: #3b82f6; }
 .kpi-icon-container.consumed { background-color: rgba(249, 115, 22, 0.15); color: #f97316; }
 .kpi-icon-container.remaining { background-color: rgba(16, 185, 129, 0.15); color: #10b981; }
-.kpi-icon-container.ratio { background-color: rgba(165, 180, 252, 0.15); color: #818cf8; }
+.kpi-icon-container.ratio { background-color: rgba(201, 162, 39, 0.15); color: var(--color-primary); }
 
 /* Main Content Panel */
 .main-card {
@@ -383,6 +389,61 @@ body {
   font-weight: 700;
   font-size: 1.25rem;
   color: var(--text-primary);
+}
+
+/* e-Lekha table heading row with centered inline HOA/HO/Division stats */
+.elekha-title-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+}
+
+.elekha-inline-stats {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.75rem;
+  padding: 0.4rem 1.25rem;
+  background: rgba(201, 162, 39, 0.06);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.inline-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.15rem;
+}
+
+.inline-stat-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.inline-stat-value {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--color-primary);
+}
+
+.inline-stat-divider {
+  width: 1px;
+  height: 26px;
+  background: var(--border-color);
+}
+
+@media (max-width: 900px) {
+  .elekha-title-row {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
 }
 
 /* Secondary Filter Bar inside Cards */
@@ -825,7 +886,7 @@ body {
 }
 
 .filter-toggle-btn.active {
-  background-color: rgba(14, 165, 233, 0.15) !important;
+  background-color: rgba(201, 162, 39, 0.15) !important;
   border-radius: 4px;
 }
 
@@ -871,6 +932,12 @@ body {
   flex-direction: column;
   justify-content: center;
   flex: 1 1 180px;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.budget-summary-card:hover {
+  transform: translateY(-2px);
+  background: var(--bg-card-hover);
 }
 
 .budget-summary-card h5 {
@@ -882,10 +949,11 @@ body {
 }
 
 .budget-summary-card .value {
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: -0.3px;
   color: var(--text-primary);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
 }
 
 .budget-summary-card.rate,
@@ -1020,3 +1088,155 @@ body {
 .table-wrapper.top-scrollbar > table {
   transform: rotateX(180deg);
 }
+
+/* ============================================================
+   CEBAR Loading Sequence — Rotating Brass Seal Animation
+   ============================================================ */
+.cebar-loader {
+  gap: 0.35rem;
+}
+
+.seal-loader {
+  position: relative;
+  width: 118px;
+  height: 118px;
+  margin-bottom: 0.5rem;
+}
+
+.seal-ring {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.seal-ring.ring-outer {
+  inset: 0;
+  border: 2px dashed rgba(201, 162, 39, 0.55);
+  animation: seal-rotate 9s linear infinite;
+}
+
+.seal-ring.ring-outer::before,
+.seal-ring.ring-outer::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 8px rgba(201, 162, 39, 0.8);
+}
+.seal-ring.ring-outer::before { top: -3px; left: calc(50% - 3px); }
+.seal-ring.ring-outer::after { bottom: -3px; left: calc(50% - 3px); }
+
+.seal-ring.ring-inner {
+  inset: 16px;
+  border: 2px solid rgba(201, 162, 39, 0.2);
+  border-top-color: var(--color-primary);
+  border-right-color: var(--color-primary);
+  animation: seal-rotate-reverse 3.2s linear infinite;
+}
+
+.seal-core {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.4rem;
+  animation: coin-pulse 2.2s ease-in-out infinite;
+}
+
+.loader-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2rem;
+  letter-spacing: 1px;
+  background: linear-gradient(120deg, #e8c766 0%, #c9a227 50%, #9c7a1a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-top: 0.5rem;
+  animation: fade-in-up 0.6s ease both;
+}
+
+.loader-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-style: italic;
+  letter-spacing: 0.3px;
+  animation: fade-in-up 0.6s ease 0.1s both;
+}
+
+.loader-progress-track {
+  position: relative;
+  width: 240px;
+  height: 4px;
+  margin-top: 1.25rem;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border-color);
+}
+
+.loader-progress-fill {
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--color-primary), #e8c766, var(--color-primary), transparent);
+  animation: progress-indeterminate 1.5s ease-in-out infinite;
+}
+
+.loader-steps {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.loader-dot {
+  color: var(--color-primary);
+  animation: dot-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes seal-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes seal-rotate-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes coin-pulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 6px rgba(201, 162, 39, 0.35)); }
+  50% { transform: scale(1.1); filter: drop-shadow(0 0 18px rgba(201, 162, 39, 0.75)); }
+}
+
+@keyframes progress-indeterminate {
+  0% { left: -40%; }
+  100% { left: 110%; }
+}
+
+@keyframes dot-blink {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seal-ring, .seal-core, .loader-progress-fill, .loader-dot {
+    animation: none !important;
+  }
+}
+
+
