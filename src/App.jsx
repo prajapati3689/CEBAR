@@ -112,6 +112,23 @@ const formatTableValue = (value) => {
   }).format(value);
 };
 
+// Formats YYYY-MM-DD report date to DD-MMM-YYYY
+const formatReportDate = (dateStr) => {
+  if (!dateStr) return '–';
+  const parts = dateStr.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    const year = parts[0];
+    const month = parts[1];
+    const day = parts[2];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const mIdx = parseInt(month, 10) - 1;
+    if (mIdx >= 0 && mIdx < 12) {
+      return `${day}-${months[mIdx]}-${year}`;
+    }
+  }
+  return dateStr;
+};
+
 // Sorts months chronologically
 const getSortedUniqueMonths = (data) => {
   const months = Array.from(new Set(data.map(d => d.Month).filter(Boolean)));
@@ -658,6 +675,13 @@ export default function App() {
   const [syncError, setSyncError] = useState('');
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [fileInputKey, setFileInputKey] = useState(Date.now());
+  const [syncReportDate, setSyncReportDate] = useState(() => {
+    const d = new Date();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${month}-${day}`;
+  });
+  const [reportMetadata, setReportMetadata] = useState([]);
 
   // Parsed Datasets
   const [elekhaData, setElekhaData] = useState([]);
@@ -808,12 +832,16 @@ export default function App() {
         }
         
         // Fetch all tables from Supabase in parallel
-        const [rawHoaList, rawMapping, rawDdoMapping, rawElekha, rawBudget] = await Promise.all([
+        const [rawHoaList, rawMapping, rawDdoMapping, rawElekha, rawBudget, rawMetadata] = await Promise.all([
           fetchTableRows('Revenue_hoa'),
           fetchTableRows('office_mapping'),
           fetchTableRows('Revenue DDO Mapping'),
           fetchTableRows('e-Lekha'),
-          fetchTableRows('Budget')
+          fetchTableRows('Budget'),
+          fetchTableRows('report_metadata').catch(err => {
+            console.warn('report_metadata table not found or failed to load:', err);
+            return [];
+          })
         ]);
 
         const hoas = convertDbRowsToStrings(rawHoaList);
@@ -821,6 +849,7 @@ export default function App() {
         const ddoMap = convertDbRowsToStrings(rawDdoMapping);
         const elekhaRaw = convertDbRowsToStrings(rawElekha);
         const budgetRaw = convertDbRowsToStrings(rawBudget);
+        const metadata = convertDbRowsToStrings(rawMetadata);
 
         // Build mapping maps
         const officeIdToNameMap = {};
@@ -965,6 +994,7 @@ export default function App() {
         setBudgetData(budget);
         setElekhaData(elekha);
         setDdoMappingList(ddoMap);
+        setReportMetadata(metadata);
 
         // Extract dropdown configuration details
         const sortedMonths = getSortedUniqueMonths(elekha);
@@ -1309,6 +1339,15 @@ export default function App() {
     const start = budgetPage * budgetRowsPerPage;
     return filteredBudgetData.slice(start, start + budgetRowsPerPage);
   }, [filteredBudgetData, budgetPage, budgetRowsPerPage]);
+
+  // Extract report date for the Budget tab
+  const budgetReportDate = useMemo(() => {
+    const budgetDateObj = reportMetadata.find(m => m.key === 'Budget_report_date');
+    if (budgetDateObj && budgetDateObj.value) return budgetDateObj.value;
+    const elekhaDateObj = reportMetadata.find(m => m.key === 'e-Lekha_report_date');
+    if (elekhaDateObj && elekhaDateObj.value) return elekhaDateObj.value;
+    return '';
+  }, [reportMetadata]);
 
   // Budget tab KPI metrics summary (the 6 stats)
   const budgetKpis = useMemo(() => {
@@ -2275,6 +2314,16 @@ export default function App() {
         }
       }
 
+      // 4. Save report date metadata to Supabase
+      setSyncProgress('Saving report metadata...');
+      const { error: metaError } = await supabase
+        .from('report_metadata')
+        .upsert({ key: dbTable + '_report_date', value: syncReportDate });
+
+      if (metaError) {
+        throw new Error(`Failed to save report date metadata: ${metaError.message}`);
+      }
+
       setSyncProgress('Upload complete! Finalizing synchronization...');
       setSyncSuccess(true);
       
@@ -2701,20 +2750,8 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <div className="loader-container cebar-loader" style={{ minHeight: '80vh' }}>
-        <div className="loader-seal">
-          <div className="loader-ring loader-ring-outer"></div>
-          <div className="loader-ring loader-ring-inner"></div>
-          <span className="loader-coin" role="img" aria-label="CEBAR emblem">🪙</span>
-        </div>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, letterSpacing: '0.5px' }}>CEBAR is Loading</h2>
-        <p className="loader-subtext">Synchronizing Budget, e-Lekha &amp; Revenue records from Supabase&hellip;</p>
-        <div className="loader-progress-track">
-          <div className="loader-progress-bar"></div>
-        </div>
-        <div className="loader-dots">
-          <span></span><span></span><span></span>
-        </div>
+      <div className="loader-container" style={{ minHeight: '80vh' }}>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}>CEBAR is Loading</h2>
       </div>
     );
   }
@@ -3186,6 +3223,33 @@ export default function App() {
               <CheckCircle size={20} />
             </div>
           </div>
+          <div className="kpi-card">
+            <div className="kpi-info">
+              <h4>No. of HOA</h4>
+              <div className="kpi-value">{elekhaKpis.numHoas}</div>
+            </div>
+            <div className="kpi-icon-container ratio">
+              <BarChart2 size={20} />
+            </div>
+          </div>
+          <div className="kpi-card">
+            <div className="kpi-info">
+              <h4>No. of HO</h4>
+              <div className="kpi-value">{elekhaKpis.numHos}</div>
+            </div>
+            <div className="kpi-icon-container ratio">
+              <FileText size={20} />
+            </div>
+          </div>
+          <div className="kpi-card">
+            <div className="kpi-info">
+              <h4>No. of Division</h4>
+              <div className="kpi-value">{elekhaKpis.numDivs}</div>
+            </div>
+            <div className="kpi-icon-container ratio">
+              <Coins size={20} />
+            </div>
+          </div>
         </div>
       )}
 
@@ -3222,6 +3286,10 @@ export default function App() {
               <div className="budget-summary-card rate">
                 <h5>e-Lekha Util. Rate</h5>
                 <div className="value">{budgetKpis.elekhaUtil.toFixed(1)}%</div>
+              </div>
+              <div className="budget-summary-card report-date">
+                <h5>Report Date</h5>
+                <div className="value">{formatReportDate(budgetReportDate)}</div>
               </div>
             </div>
 
@@ -3864,14 +3932,9 @@ export default function App() {
         {/* Tab 2: e-Lekha transactions list view */}
         {activeTab === 'elekha' && (
           <>
-            <div className="card-title-row" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '1rem' }}>
-              <h2 style={{ margin: 0 }}>e-Lekha Transactions Table</h2>
-              <div className="elekha-inline-stats">
-                <span title="Unique Head of Accounts"><FileText size={13} /> HOA: <strong>{elekhaKpis.numHoas}</strong></span>
-                <span title="Unique Head Offices"><Coins size={13} /> HO: <strong>{elekhaKpis.numHos}</strong></span>
-                <span title="Unique Divisions"><BarChart2 size={13} /> Division: <strong>{elekhaKpis.numDivs}</strong></span>
-              </div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
+            <div className="card-title-row">
+              <h2>e-Lekha Transactions Table</h2>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                 Loaded <strong>{filteredElekhaData.length}</strong> matching transactions
               </div>
             </div>
@@ -4985,6 +5048,28 @@ export default function App() {
                 />
               </div>
 
+              {/* Select Report Date */}
+              {syncFile && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>3. Select Report Date</label>
+                  <input 
+                    type="date" 
+                    value={syncReportDate}
+                    onChange={(e) => setSyncReportDate(e.target.value)}
+                    className="custom-input"
+                    required
+                    style={{ 
+                      maxWidth: '300px', 
+                      padding: '8px', 
+                      backgroundColor: 'var(--bg-input)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)',
+                    }}
+                  />
+                </div>
+              )}
+
               {/* Mappings and Preview */}
               {syncFile && syncHeaders.length > 0 && (
                 <div style={{
@@ -4997,7 +5082,7 @@ export default function App() {
                   gap: '15px'
                 }}>
                   <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                    3. Match Column Headings (Destination &harr; Uploaded File)
+                    4. Match Column Headings (Destination &harr; Uploaded File)
                   </h3>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                     Verify how columns from your file align with Supabase fields. Remap headers using the dropdowns if necessary.
@@ -5042,7 +5127,7 @@ export default function App() {
 
                   {/* Sync Mode Option */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
-                    <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>4. Select Synchronization Mode</label>
+                    <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>5. Select Synchronization Mode</label>
                     <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
                         <input 
