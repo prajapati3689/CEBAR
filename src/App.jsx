@@ -652,6 +652,13 @@ export default function App() {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordChangeError, setPasswordChangeError] = useState('');
 
+  // Voluntary Password Change State
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [vCurrentPassword, setVCurrentPassword] = useState('');
+  const [vNewPassword, setVNewPassword] = useState('');
+  const [vConfirmNewPassword, setVConfirmNewPassword] = useState('');
+  const [vPasswordChangeError, setVPasswordChangeError] = useState('');
+
   // User Management State (SA only)
   const [usersList, setUsersList] = useState([]);
   const [showUserModal, setShowUserModal] = useState(false);
@@ -662,6 +669,9 @@ export default function App() {
   const [manageType, setManageType] = useState('View');
   const [isEditingUser, setIsEditingUser] = useState(false);
   const [userManagementError, setUserManagementError] = useState('');
+  const [manageOffices, setManageOffices] = useState([]);
+  const [manageRights, setManageRights] = useState([]);
+  const [officeSearchQuery, setOfficeSearchQuery] = useState('');
 
   // Database Synchronization State (SA only)
   const [syncTable, setSyncTable] = useState('Budget'); // 'Budget' or 'e-Lekha'
@@ -1082,6 +1092,65 @@ export default function App() {
     return map;
   }, [ddoMappingList]);
 
+  // Helper lookup maps and helpers for allowed offices and rights
+  const officeNameToIdMap = useMemo(() => {
+    const map = {};
+    officeMapping.forEach(m => {
+      const name = String(m['Office Name'] || '').trim().toLowerCase();
+      const id = String(m['Office ID'] || '').trim();
+      if (name && id) {
+        map[name] = id;
+      }
+    });
+    return map;
+  }, [officeMapping]);
+
+  const isOfficeAllowed = useCallback((officeId, officeName) => {
+    if (!currentUser) return false;
+    if (!currentUser.offices || currentUser.offices.length === 0) {
+      return true;
+    }
+    if (officeId && currentUser.offices.includes(String(officeId))) {
+      return true;
+    }
+    if (officeName) {
+      const mappedId = officeNameToIdMap[String(officeName).trim().toLowerCase()];
+      if (mappedId && currentUser.offices.includes(String(mappedId))) {
+        return true;
+      }
+    }
+    return false;
+  }, [currentUser, officeNameToIdMap]);
+
+  const getOfficeIdForElekhaRow = useCallback((row) => {
+    const rawDdoCode = String(row['DDO Code'] || '').trim();
+    const cleanDdoCode = rawDdoCode.split('.')[0];
+    const mapped = ddoLookupMap[cleanDdoCode];
+    const hoName = mapped ? mapped.ho : row.HO;
+    if (!hoName) return null;
+    return officeNameToIdMap[hoName.trim().toLowerCase()] || null;
+  }, [ddoLookupMap, officeNameToIdMap]);
+
+  const hasRight = useCallback((tabKey) => {
+    if (!currentUser) return false;
+    if ((tabKey === 'users' || tabKey === 'sync') && currentUser.type !== 'SA') {
+      return false;
+    }
+    if (!currentUser.rights || currentUser.rights.length === 0) {
+      return true;
+    }
+    return currentUser.rights.includes(tabKey);
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (isLoggedIn && currentUser) {
+      const allowedTabs = ['budget', 'elekha', 'revenue', 'users', 'sync'].filter(tab => hasRight(tab));
+      if (allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
+        setActiveTab(allowedTabs[0]);
+      }
+    }
+  }, [isLoggedIn, currentUser, activeTab, hasRight]);
+
   // Build lookup index map for e-Lekha Transactions
   const elekhaLookupMap = useMemo(() => {
     const map = {};
@@ -1109,6 +1178,14 @@ export default function App() {
   // Helper for cascading filters on e-Lekha
   const getFilteredElekhaDataForColumn = (excludeColumnName) => {
     return elekhaData.filter(row => {
+      // 0. Allowed Office check
+      if (currentUser && currentUser.offices && currentUser.offices.length > 0) {
+        const rowOfficeId = getOfficeIdForElekhaRow(row);
+        if (!isOfficeAllowed(rowOfficeId, row.HO)) {
+          return false;
+        }
+      }
+
       // 1. Column filters (checks for selected values, excluding the active column)
       for (const [colName, selectedSet] of Object.entries(elekhaColumnFilters)) {
         if (colName === excludeColumnName) continue;
@@ -1260,6 +1337,13 @@ export default function App() {
   // Helper for cascading filters on Budget
   const getFilteredDataForColumn = (excludeColumnName) => {
     return mappedBudgetData.filter(row => {
+      // 0. Allowed Office check
+      if (currentUser && currentUser.offices && currentUser.offices.length > 0) {
+        if (!isOfficeAllowed(row['Office ID'], row['Name of Unit (HO/Division)'])) {
+          return false;
+        }
+      }
+
       // 1. Region filter
       if (budgetRegion !== 'All' && row.Region !== budgetRegion) {
         return false;
@@ -1605,6 +1689,14 @@ export default function App() {
       const hoVal = mapped ? mapped.ho : row.HO;
       const divisionVal = mapped ? mapped.division : row.Division;
       const regionVal = mapped ? mapped.region : row.Region;
+
+      // Allowed Office filter
+      if (currentUser && currentUser.offices && currentUser.offices.length > 0) {
+        const rowOfficeId = getOfficeIdForElekhaRow(row);
+        if (!isOfficeAllowed(rowOfficeId, hoVal)) {
+          continue;
+        }
+      }
 
       // Define column group label based on selection
       let groupVal = '';
@@ -1964,13 +2056,56 @@ export default function App() {
     }
   };
 
+  const handleVoluntaryPasswordChange = async (e) => {
+    e.preventDefault();
+    setVPasswordChangeError('');
+    if (!vCurrentPassword || !vNewPassword || !vConfirmNewPassword) {
+      setVPasswordChangeError('All fields are required.');
+      return;
+    }
+    if (vCurrentPassword !== currentUser.password) {
+      setVPasswordChangeError('Current password is incorrect.');
+      return;
+    }
+    if (vNewPassword === 'Ahd@12345') {
+      setVPasswordChangeError('New password cannot be the default password.');
+      return;
+    }
+    if (vNewPassword !== vConfirmNewPassword) {
+      setVPasswordChangeError('New passwords do not match.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ password: vNewPassword, needs_password_change: false })
+        .eq('user_id', currentUser.user_id);
+
+      if (error) throw error;
+
+      // Update local state
+      const updatedUser = { ...currentUser, password: vNewPassword, needs_password_change: false };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('cebar_user', JSON.stringify(updatedUser));
+      setVCurrentPassword('');
+      setVNewPassword('');
+      setVConfirmNewPassword('');
+      setShowChangePasswordModal(false);
+      alert('Password changed successfully.');
+    } catch (err) {
+      console.error('Password change error:', err);
+      setVPasswordChangeError('Failed to change password. Please try again.');
+    }
+  };
+
   // User Management Handlers (SA only)
   const handleCreateOrUpdateUser = async (e) => {
     e.preventDefault();
     setUserManagementError('');
 
-    if (!manageUserId || !manageName || !manageMobileNo || !manageOffice) {
-      setUserManagementError('All fields are required.');
+    if (!manageUserId || !manageName || !manageMobileNo) {
+      setUserManagementError('All fields except office select are required.');
       return;
     }
 
@@ -1982,6 +2117,14 @@ export default function App() {
     if (manageMobileNo.length !== 10 || !/^\d+$/.test(manageMobileNo)) {
       setUserManagementError('Mobile Number must be exactly 10 digits.');
       return;
+    }
+
+    let calculatedOfficeStr = 'All Offices';
+    if (manageOffices.length === 1) {
+      const found = officeMapping.find(o => String(o['Office ID']) === manageOffices[0]);
+      calculatedOfficeStr = found ? found['Office Name'] : '1 Office';
+    } else if (manageOffices.length > 0 && manageOffices.length < officeMapping.length) {
+      calculatedOfficeStr = `${manageOffices.length} Offices`;
     }
 
     try {
@@ -1997,12 +2140,29 @@ export default function App() {
           .update({
             name: manageName.trim(),
             mobile_no: manageMobileNo.trim(),
-            office: manageOffice.trim(),
-            type: manageType
+            office: calculatedOfficeStr,
+            type: manageType,
+            offices: manageOffices,
+            rights: manageRights
           })
           .eq('user_id', manageUserId);
 
         if (error) throw error;
+
+        // Update local session if editing self
+        if (currentUser && currentUser.user_id === manageUserId) {
+          const updatedUser = {
+            ...currentUser,
+            name: manageName.trim(),
+            mobile_no: manageMobileNo.trim(),
+            office: calculatedOfficeStr,
+            type: manageType,
+            offices: manageOffices,
+            rights: manageRights
+          };
+          setCurrentUser(updatedUser);
+          localStorage.setItem('cebar_user', JSON.stringify(updatedUser));
+        }
       } else {
         // Check if user already exists
         const { data: existingUser } = await supabase
@@ -2022,10 +2182,12 @@ export default function App() {
             user_id: manageUserId,
             name: manageName.trim(),
             mobile_no: manageMobileNo.trim(),
-            office: manageOffice.trim(),
+            office: calculatedOfficeStr,
             type: manageType,
             password: 'Ahd@12345',
-            needs_password_change: true
+            needs_password_change: true,
+            offices: manageOffices,
+            rights: manageRights
           }]);
 
         if (error) throw error;
@@ -2049,15 +2211,21 @@ export default function App() {
     setManageType('View');
     setIsEditingUser(false);
     setUserManagementError('');
+    setManageOffices(officeMapping.map(o => String(o['Office ID'])));
+    setManageRights(['budget', 'elekha', 'revenue', 'users', 'sync']);
+    setOfficeSearchQuery('');
   };
 
   const handleEditClick = (user) => {
     setManageUserId(user.user_id);
     setManageName(user.name);
     setManageMobileNo(user.mobile_no);
-    setManageOffice(user.office);
+    setManageOffice(user.office || '');
     setManageType(user.type);
     setIsEditingUser(true);
+    setManageOffices(user.offices && user.offices.length > 0 ? user.offices : officeMapping.map(o => String(o['Office ID'])));
+    setManageRights(user.rights && user.rights.length > 0 ? user.rights : ['budget', 'elekha', 'revenue', 'users', 'sync']);
+    setOfficeSearchQuery('');
     setShowUserModal(true);
   };
 
@@ -2690,8 +2858,8 @@ export default function App() {
 
     categoriesOrder.forEach(cat => {
       const hoas = groupedHoas[cat] || [];
-      const clsRow = `${cat.toLowerCase()}-row`;
-      const clsTotal = `${cat.toLowerCase()}-total`;
+      const clsRow = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}`;
+      const clsTotal = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}-total`;
 
       // If Detail, show individual HOAs
       if (generatedConfig.reportType === 'Detail') {
@@ -3102,6 +3270,29 @@ export default function App() {
                 )}
               </div>
               <button 
+                onClick={() => {
+                  setVCurrentPassword('');
+                  setVNewPassword('');
+                  setVConfirmNewPassword('');
+                  setVPasswordChangeError('');
+                  setShowChangePasswordModal(true);
+                }}
+                className="pg-btn"
+                style={{
+                  height: '32px',
+                  backgroundColor: 'var(--bg-input)',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer'
+                }}
+                title="Change Password"
+              >
+                <Key size={14} /> Change Password
+              </button>
+              <button 
                 onClick={handleLogout}
                 className="pg-btn"
                 style={{
@@ -3134,39 +3325,45 @@ export default function App() {
       {/* 3. Global Control & Navigation Panel */}
       <div className="controls-panel">
         <div className="tab-navigation">
-          <button 
-            className={`tab-btn ${activeTab === 'budget' ? 'active' : ''}`}
-            onClick={() => setActiveTab('budget')}
-          >
-            <BarChart2 size={16} /> Budget Report
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'elekha' ? 'active' : ''}`}
-            onClick={() => setActiveTab('elekha')}
-          >
-            <FileText size={16} /> e-Lekha Transactions
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'revenue' ? 'active' : ''}`}
-            onClick={() => setActiveTab('revenue')}
-          >
-            <Coins size={16} /> Vertical Revenue
-          </button>
-          {currentUser && currentUser.type === 'SA' && (
-            <>
-              <button 
-                className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-                onClick={() => setActiveTab('users')}
-              >
-                <User size={16} /> User Management
-              </button>
-              <button 
-                className={`tab-btn ${activeTab === 'sync' ? 'active' : ''}`}
-                onClick={() => setActiveTab('sync')}
-              >
-                <RefreshCw size={16} /> Database Sync
-              </button>
-            </>
+          {hasRight('budget') && (
+            <button 
+              className={`tab-btn ${activeTab === 'budget' ? 'active' : ''}`}
+              onClick={() => setActiveTab('budget')}
+            >
+              <BarChart2 size={16} /> Budget Report
+            </button>
+          )}
+          {hasRight('elekha') && (
+            <button 
+              className={`tab-btn ${activeTab === 'elekha' ? 'active' : ''}`}
+              onClick={() => setActiveTab('elekha')}
+            >
+              <FileText size={16} /> e-Lekha Transactions
+            </button>
+          )}
+          {hasRight('revenue') && (
+            <button 
+              className={`tab-btn ${activeTab === 'revenue' ? 'active' : ''}`}
+              onClick={() => setActiveTab('revenue')}
+            >
+              <Coins size={16} /> Vertical Revenue
+            </button>
+          )}
+          {currentUser && currentUser.type === 'SA' && hasRight('users') && (
+            <button 
+              className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+              onClick={() => setActiveTab('users')}
+            >
+              <User size={16} /> User Management
+            </button>
+          )}
+          {currentUser && currentUser.type === 'SA' && hasRight('sync') && (
+            <button 
+              className={`tab-btn ${activeTab === 'sync' ? 'active' : ''}`}
+              onClick={() => setActiveTab('sync')}
+            >
+              <RefreshCw size={16} /> Database Sync
+            </button>
           )}
         </div>
 
@@ -3619,307 +3816,305 @@ export default function App() {
               </div>
             </div>
 
-              <>
-                <div className="table-wrapper top-scrollbar">
-                  <table className="premium-table">
-                    <thead>
-                      <tr>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="Office ID" 
-                            columnName="Office ID" 
-                            allValues={getFilteredDataForColumn('Office ID').map(d => d['Office ID'])} 
-                            selectedFilters={budgetColumnFilters['Office ID']} 
-                            onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="Name of Unit (HO/Division)" 
-                            columnName="Name of Unit (HO/Division)" 
-                            allValues={getFilteredDataForColumn('Name of Unit (HO/Division)').map(d => d['Name of Unit (HO/Division)'])} 
-                            selectedFilters={budgetColumnFilters['Name of Unit (HO/Division)']} 
-                            onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="Region" 
-                            columnName="Region" 
-                            allValues={getFilteredDataForColumn('Region').map(d => d.Region)} 
-                            selectedFilters={budgetColumnFilters.Region} 
-                            onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="HOA" 
-                            columnName="HOA" 
-                            allValues={getFilteredDataForColumn('HOA').map(d => d.HOA)} 
-                            selectedFilters={budgetColumnFilters.HOA} 
-                            onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="Description" 
-                            columnName="Description" 
-                            allValues={getFilteredDataForColumn('Description').map(d => d.Description)} 
-                            selectedFilters={budgetColumnFilters.Description} 
-                            onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th className="text-right">
-                          <ColumnHeaderFilter 
-                            title="APT Alloted" 
-                            columnName="APT Alloted" 
-                            allValues={getFilteredDataForColumn('APT Alloted').map(d => String(d['APT Alloted'] || 0))} 
-                            selectedFilters={budgetColumnFilters['APT Alloted']} 
-                            onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th className="text-right">
-                          <ColumnHeaderFilter 
-                            title="APT Consumed" 
-                            columnName="APT Consumed" 
-                            allValues={getFilteredDataForColumn('APT Consumed').map(d => String(d['APT Consumed'] || 0))} 
-                            selectedFilters={budgetColumnFilters['APT Consumed']} 
-                            onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th className="text-right">
-                          <ColumnHeaderFilter 
-                            title="e-Lekha Consumed" 
-                            columnName="e-lekha Consumed" 
-                            allValues={getFilteredDataForColumn('e-lekha Consumed').map(d => String(d['e-lekha Consumed'] || 0))} 
-                            selectedFilters={budgetColumnFilters['e-lekha Consumed']} 
-                            onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th className="text-right">
-                          <ColumnHeaderFilter 
-                            title="Diff. (APT - e-Lekha)" 
-                            columnName="Diff. (APT - e-Lekha)" 
-                            allValues={getFilteredDataForColumn('Diff. (APT - e-Lekha)').map(d => String(d['Diff. (APT - e-Lekha)'] || 0))} 
-                            selectedFilters={budgetColumnFilters['Diff. (APT - e-Lekha)']} 
-                            onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th className="text-right">
-                          <ColumnHeaderFilter 
-                            title="APT Consumed %" 
-                            columnName="APT Consumed %" 
-                            allValues={getFilteredDataForColumn('APT Consumed %').map(d => typeof d['APT Consumed %'] === 'number' ? d['APT Consumed %'].toFixed(2) : String(d['APT Consumed %']))} 
-                            selectedFilters={budgetColumnFilters['APT Consumed %']} 
-                            onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th className="text-right">
-                          <ColumnHeaderFilter 
-                            title="e-Lekha Consumed %" 
-                            columnName="e-Lekha Consumed %" 
-                            allValues={getFilteredDataForColumn('e-Lekha Consumed %').map(d => typeof d['e-Lekha Consumed %'] === 'number' ? d['e-Lekha Consumed %'].toFixed(2) : String(d['e-Lekha Consumed %']))} 
-                            selectedFilters={budgetColumnFilters['e-Lekha Consumed %']} 
-                            onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredBudgetData.length === 0 ? (
-                        <tr>
-                          <td colSpan={11} className="text-center" style={{ padding: '3rem', color: 'var(--text-secondary)' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                              <AlertCircle size={24} style={{ color: 'var(--color-warning)' }} />
-                              <span style={{ fontWeight: 600 }}>No budget records matching the active filters.</span>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : (
-                        paginatedBudgetData.map((row, idx) => {
-                          const pct = row['APT Consumed %'] || 0;
-                          let statusColor = 'inherit';
-                          if (pct > 100) {
-                            statusColor = 'var(--color-error)';
-                          } else if (pct >= 85) {
-                            statusColor = 'var(--color-warning)';
-                          }
+            <div className="table-wrapper top-scrollbar">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Office ID" 
+                        columnName="Office ID" 
+                        allValues={getFilteredDataForColumn('Office ID').map(d => d['Office ID'])} 
+                        selectedFilters={budgetColumnFilters['Office ID']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Name of Unit (HO/Division)" 
+                        columnName="Name of Unit (HO/Division)" 
+                        allValues={getFilteredDataForColumn('Name of Unit (HO/Division)').map(d => d['Name of Unit (HO/Division)'])} 
+                        selectedFilters={budgetColumnFilters['Name of Unit (HO/Division)']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Region" 
+                        columnName="Region" 
+                        allValues={getFilteredDataForColumn('Region').map(d => d.Region)} 
+                        selectedFilters={budgetColumnFilters.Region} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="HOA" 
+                        columnName="HOA" 
+                        allValues={getFilteredDataForColumn('HOA').map(d => d.HOA)} 
+                        selectedFilters={budgetColumnFilters.HOA} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Description" 
+                        columnName="Description" 
+                        allValues={getFilteredDataForColumn('Description').map(d => d.Description)} 
+                        selectedFilters={budgetColumnFilters.Description} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="APT Alloted" 
+                        columnName="APT Alloted" 
+                        allValues={getFilteredDataForColumn('APT Alloted').map(d => String(d['APT Alloted'] || 0))} 
+                        selectedFilters={budgetColumnFilters['APT Alloted']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="APT Consumed" 
+                        columnName="APT Consumed" 
+                        allValues={getFilteredDataForColumn('APT Consumed').map(d => String(d['APT Consumed'] || 0))} 
+                        selectedFilters={budgetColumnFilters['APT Consumed']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="e-Lekha Consumed" 
+                        columnName="e-lekha Consumed" 
+                        allValues={getFilteredDataForColumn('e-lekha Consumed').map(d => String(d['e-lekha Consumed'] || 0))} 
+                        selectedFilters={budgetColumnFilters['e-lekha Consumed']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="Diff. (APT - e-Lekha)" 
+                        columnName="Diff. (APT - e-Lekha)" 
+                        allValues={getFilteredDataForColumn('Diff. (APT - e-Lekha)').map(d => String(d['Diff. (APT - e-Lekha)'] || 0))} 
+                        selectedFilters={budgetColumnFilters['Diff. (APT - e-Lekha)']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="APT Consumed %" 
+                        columnName="APT Consumed %" 
+                        allValues={getFilteredDataForColumn('APT Consumed %').map(d => typeof d['APT Consumed %'] === 'number' ? d['APT Consumed %'].toFixed(2) : String(d['APT Consumed %']))} 
+                        selectedFilters={budgetColumnFilters['APT Consumed %']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="e-Lekha Consumed %" 
+                        columnName="e-Lekha Consumed %" 
+                        allValues={getFilteredDataForColumn('e-Lekha Consumed %').map(d => typeof d['e-Lekha Consumed %'] === 'number' ? d['e-Lekha Consumed %'].toFixed(2) : String(d['e-Lekha Consumed %']))} 
+                        selectedFilters={budgetColumnFilters['e-Lekha Consumed %']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBudgetData.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="text-center" style={{ padding: '3rem', color: 'var(--text-secondary)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <AlertCircle size={24} style={{ color: 'var(--color-warning)' }} />
+                          <span style={{ fontWeight: 600 }}>No budget records matching the active filters.</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedBudgetData.map((row, idx) => {
+                      const pct = row['APT Consumed %'] || 0;
+                      let statusColor = 'inherit';
+                      if (pct > 100) {
+                        statusColor = 'var(--color-error)';
+                      } else if (pct >= 85) {
+                        statusColor = 'var(--color-warning)';
+                      }
 
-                          const rowKey = `${row['Office ID']}_${row['HOA']}`;
-                          const isExpanded = !!expandedBudgetRows[rowKey];
-                          const eLekhaTxns = elekhaLookupMap[`${String(row['Name of Unit (HO/Division)']).trim().toLowerCase()}_${String(row['HOA']).trim()}`]?.txns || [];
+                      const rowKey = `${row['Office ID']}_${row['HOA']}`;
+                      const isExpanded = !!expandedBudgetRows[rowKey];
+                      const eLekhaTxns = elekhaLookupMap[`${String(row['Name of Unit (HO/Division)']).trim().toLowerCase()}_${String(row['HOA']).trim()}`]?.txns || [];
 
-                          return (
-                            <React.Fragment key={rowKey}>
-                              <tr>
-                                <td>
-                                  {eLekhaTxns.length > 0 ? (
-                                    <button 
-                                      onClick={() => setExpandedBudgetRows(prev => ({ ...prev, [rowKey]: !isExpanded }))} 
-                                      className="expand-btn"
-                                      title="Toggle transactions view"
-                                    >
-                                      {isExpanded ? '−' : '+'}
-                                    </button>
-                                  ) : (
-                                    <span style={{ display: 'inline-block', width: '30px' }}></span>
-                                  )}
-                                  <code>{row['Office ID'] || '–'}</code>
-                                </td>
-                                <td><strong>{row['Name of Unit (HO/Division)'] || '–'}</strong></td>
-                                <td>{row['Region'] || '–'}</td>
-                                <td><code>{row['HOA'] || '–'}</code></td>
-                                <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.Description}>
-                                  {row.Description || '–'}
-                                </td>
-                                <td className="text-right">{formatTableValue(row['APT Alloted'])}</td>
-                                <td className="text-right" style={{ fontWeight: 500 }}>{formatTableValue(row['APT Consumed'])}</td>
-                                <td className="text-right" style={{ fontWeight: 500, color: 'var(--color-primary)' }}>{formatTableValue(row['e-lekha Consumed'])}</td>
-                                <td className="text-right" style={{ color: row['Diff. (APT - e-Lekha)'] < 0 ? 'var(--color-error)' : 'inherit' }}>
-                                  {formatTableValue(row['Diff. (APT - e-Lekha)'])}
-                                </td>
-                                <td className="text-right" style={{ fontWeight: 600, color: statusColor }}>
-                                  {typeof row['APT Consumed %'] === 'number' ? (row['APT Consumed %'].toFixed(2) + '%') : row['APT Consumed %']}
-                                </td>
-                                <td className="text-right" style={{ fontWeight: 600 }}>
-                                  {typeof row['e-Lekha Consumed %'] === 'number' ? (row['e-Lekha Consumed %'].toFixed(2) + '%') : row['e-Lekha Consumed %']}
-                                </td>
-                              </tr>
-                              {isExpanded && (
-                                <tr className="expanded-row">
-                                  <td colSpan={11}>
-                                    <div className="expanded-content">
-                                      <h4>e-Lekha Transactions Breakdown ({eLekhaTxns.length} records)</h4>
-                                      <table className="expanded-table">
-                                        <thead>
-                                          <tr>
-                                            <th>Txn Date</th>
-                                            <th>Month</th>
-                                            <th>Description</th>
-                                            <th className="text-right">Payment Amount (Rs.)</th>
-                                            <th>Remark</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {eLekhaTxns.map((txn, tIdx) => (
-                                            <tr key={tIdx}>
-                                              <td>{txn['Txn Date'] || '–'}</td>
-                                              <td>{txn['Month'] || '–'}</td>
-                                              <td>{txn['Description'] || '–'}</td>
-                                              <td className="text-right" style={{ color: 'var(--color-warning)', fontWeight: 600 }}>
-                                                {txn['Payment (Rs.)'] || '–'}
-                                              </td>
-                                              <td>{txn['Remark'] || '–'}</td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </td>
-                                </tr>
+                      return (
+                        <React.Fragment key={rowKey}>
+                          <tr>
+                            <td>
+                              {eLekhaTxns.length > 0 ? (
+                                <button 
+                                  onClick={() => setExpandedBudgetRows(prev => ({ ...prev, [rowKey]: !isExpanded }))} 
+                                  className="expand-btn"
+                                  title="Toggle transactions view"
+                                >
+                                  {isExpanded ? '−' : '+'}
+                                </button>
+                              ) : (
+                                <span style={{ display: 'inline-block', width: '30px' }}></span>
                               )}
-                            </React.Fragment>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
+                              <code>{row['Office ID'] || '–'}</code>
+                            </td>
+                            <td><strong>{row['Name of Unit (HO/Division)'] || '–'}</strong></td>
+                            <td>{row['Region'] || '–'}</td>
+                            <td><code>{row['HOA'] || '–'}</code></td>
+                            <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.Description}>
+                              {row.Description || '–'}
+                            </td>
+                            <td className="text-right">{formatTableValue(row['APT Alloted'])}</td>
+                            <td className="text-right" style={{ fontWeight: 500 }}>{formatTableValue(row['APT Consumed'])}</td>
+                            <td className="text-right" style={{ fontWeight: 500, color: 'var(--color-primary)' }}>{formatTableValue(row['e-lekha Consumed'])}</td>
+                            <td className="text-right" style={{ color: row['Diff. (APT - e-Lekha)'] < 0 ? 'var(--color-error)' : 'inherit' }}>
+                              {formatTableValue(row['Diff. (APT - e-Lekha)'])}
+                            </td>
+                            <td className="text-right" style={{ fontWeight: 600, color: statusColor }}>
+                              {typeof row['APT Consumed %'] === 'number' ? (row['APT Consumed %'].toFixed(2) + '%') : row['APT Consumed %']}
+                            </td>
+                            <td className="text-right" style={{ fontWeight: 600 }}>
+                              {typeof row['e-Lekha Consumed %'] === 'number' ? (row['e-Lekha Consumed %'].toFixed(2) + '%') : row['e-Lekha Consumed %']}
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="expanded-row">
+                              <td colSpan={11}>
+                                <div className="expanded-content">
+                                  <h4>e-Lekha Transactions Breakdown ({eLekhaTxns.length} records)</h4>
+                                  <table className="expanded-table">
+                                    <thead>
+                                      <tr>
+                                        <th>Txn Date</th>
+                                        <th>Month</th>
+                                        <th>Description</th>
+                                        <th className="text-right">Payment Amount (Rs.)</th>
+                                        <th>Remark</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {eLekhaTxns.map((txn, tIdx) => (
+                                        <tr key={tIdx}>
+                                          <td>{txn['Txn Date'] || '–'}</td>
+                                          <td>{txn['Month'] || '–'}</td>
+                                          <td>{txn['Description'] || '–'}</td>
+                                          <td className="text-right" style={{ color: 'var(--color-warning)', fontWeight: 600 }}>
+                                            {txn['Payment (Rs.)'] || '–'}
+                                          </td>
+                                          <td>{txn['Remark'] || '–'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination and Exports */}
+            {filteredBudgetData.length > 0 && (
+              <div className="pagination-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {/* Bottom Left Exports */}
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button 
+                    onClick={handleExportBudgetCSV} 
+                    className="pg-btn" 
+                    style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', fontWeight: 600 }}
+                  >
+                    <Download size={14} /> Export to CSV
+                  </button>
+                  <button 
+                    onClick={handleExportBudgetExcel} 
+                    className="pg-btn" 
+                    style={{ backgroundColor: '#22c55e', color: 'white', border: 'none', fontWeight: 600 }}
+                  >
+                    <Download size={14} /> Export to Excel
+                  </button>
                 </div>
 
-                {/* Pagination and Exports */}
-                {filteredBudgetData.length > 0 && (
-                  <div className="pagination-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    {/* Bottom Left Exports */}
-                    <div style={{ display: 'flex', gap: '0.75rem' }}>
-                      <button 
-                        onClick={handleExportBudgetCSV} 
-                        className="pg-btn" 
-                        style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', fontWeight: 600 }}
-                      >
-                        <Download size={14} /> Export to CSV
-                      </button>
-                      <button 
-                        onClick={handleExportBudgetExcel} 
-                        className="pg-btn" 
-                        style={{ backgroundColor: '#22c55e', color: 'white', border: 'none', fontWeight: 600 }}
-                      >
-                        <Download size={14} /> Export to Excel
-                      </button>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                      <div className="pagination-info">
-                        Showing <strong>{budgetPage * budgetRowsPerPage + 1}</strong> to <strong>{Math.min((budgetPage + 1) * budgetRowsPerPage, filteredBudgetData.length)}</strong> of <strong>{filteredBudgetData.length}</strong> records
-                      </div>
-                      <select 
-                        className="custom-select" 
-                        value={budgetRowsPerPage} 
-                        onChange={(e) => {
-                          setBudgetRowsPerPage(parseInt(e.target.value, 10));
-                          setBudgetPage(0);
-                        }}
-                        style={{ padding: '0.4rem 2rem 0.4rem 1rem', minWidth: '80px' }}
-                      >
-                        <option value="25">25 rows</option>
-                        <option value="50">50 rows</option>
-                        <option value="100">100 rows</option>
-                      </select>
-
-                      <div className="pagination-buttons" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <button 
-                          className="pg-btn" 
-                          disabled={budgetPage === 0} 
-                          onClick={() => setBudgetPage(prev => Math.max(prev - 1, 0))}
-                        >
-                          <ChevronLeft size={16} /> Prev
-                        </button>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Page:</span>
-                          <input 
-                            type="text" 
-                            className="custom-input" 
-                            value={budgetPageInput} 
-                            onChange={(e) => {
-                              const val = e.target.value.replace(/\D/g, ''); // only digits
-                              setBudgetPageInput(val);
-                              if (val) {
-                                const pNum = parseInt(val, 10) - 1;
-                                const maxPage = Math.ceil(filteredBudgetData.length / budgetRowsPerPage) - 1;
-                                if (pNum >= 0 && pNum <= maxPage) {
-                                  setBudgetPage(pNum);
-                                }
-                              }
-                            }}
-                            style={{
-                              width: '45px',
-                              padding: '4px 6px',
-                              borderRadius: '4px',
-                              border: '1px solid var(--border-color)',
-                              backgroundColor: 'var(--bg-input)',
-                              color: 'var(--text-primary)',
-                              height: '30px',
-                              textAlign: 'center',
-                              fontSize: '0.85rem'
-                            }}
-                          />
-                          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/ {Math.ceil(filteredBudgetData.length / budgetRowsPerPage)}</span>
-                        </div>
-
-                        <button 
-                          className="pg-btn" 
-                          disabled={(budgetPage + 1) * budgetRowsPerPage >= filteredBudgetData.length} 
-                          onClick={() => setBudgetPage(prev => prev + 1)}
-                        >
-                          Next <ChevronRight size={16} />
-                        </button>
-                      </div>
-                    </div>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <div className="pagination-info">
+                    Showing <strong>{budgetPage * budgetRowsPerPage + 1}</strong> to <strong>{Math.min((budgetPage + 1) * budgetRowsPerPage, filteredBudgetData.length)}</strong> of <strong>{filteredBudgetData.length}</strong> records
                   </div>
-                )}
-              </>
-            </>
-          )}
+                  <select 
+                    className="custom-select" 
+                    value={budgetRowsPerPage} 
+                    onChange={(e) => {
+                      setBudgetRowsPerPage(parseInt(e.target.value, 10));
+                      setBudgetPage(0);
+                    }}
+                    style={{ padding: '0.4rem 2rem 0.4rem 1rem', minWidth: '80px' }}
+                  >
+                    <option value="25">25 rows</option>
+                    <option value="50">50 rows</option>
+                    <option value="100">100 rows</option>
+                  </select>
+
+                  <div className="pagination-buttons" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button 
+                      className="pg-btn" 
+                      disabled={budgetPage === 0} 
+                      onClick={() => setBudgetPage(prev => Math.max(prev - 1, 0))}
+                    >
+                      <ChevronLeft size={16} /> Prev
+                    </button>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Page:</span>
+                      <input 
+                        type="text" 
+                        className="custom-input" 
+                        value={budgetPageInput} 
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, ''); // only digits
+                          setBudgetPageInput(val);
+                          if (val) {
+                            const pNum = parseInt(val, 10) - 1;
+                            const maxPage = Math.ceil(filteredBudgetData.length / budgetRowsPerPage) - 1;
+                            if (pNum >= 0 && pNum <= maxPage) {
+                              setBudgetPage(pNum);
+                            }
+                          }
+                        }}
+                        style={{
+                          width: '45px',
+                          padding: '4px 6px',
+                          borderRadius: '4px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--bg-input)',
+                          color: 'var(--text-primary)',
+                          height: '30px',
+                          textAlign: 'center',
+                          fontSize: '0.85rem'
+                        }}
+                      />
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/ {Math.ceil(filteredBudgetData.length / budgetRowsPerPage)}</span>
+                    </div>
+
+                    <button 
+                      className="pg-btn" 
+                      disabled={(budgetPage + 1) * budgetRowsPerPage >= filteredBudgetData.length} 
+                      onClick={() => setBudgetPage(prev => prev + 1)}
+                    >
+                      Next <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
 
         {/* Tab 2: e-Lekha transactions list view */}
         {activeTab === 'elekha' && (
@@ -3947,255 +4142,253 @@ export default function App() {
               </div>
             </div>
 
-            <>
-              <div className="table-wrapper top-scrollbar">
-                  <table className="premium-table">
-                    <thead>
-                      <tr>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="TE Number" 
-                            columnName="TE Number" 
-                            allValues={getFilteredElekhaDataForColumn('TE Number').map(d => String(d['TE Number'] || ''))} 
-                            selectedFilters={elekhaColumnFilters['TE Number']} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="Txn Date" 
-                            columnName="Txn Date" 
-                            allValues={getFilteredElekhaDataForColumn('Txn Date').map(d => d['Txn Date'])} 
-                            selectedFilters={elekhaColumnFilters['Txn Date']} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="Month" 
-                            columnName="Month" 
-                            allValues={getFilteredElekhaDataForColumn('Month').map(d => d.Month)} 
-                            selectedFilters={elekhaColumnFilters.Month} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="Region" 
-                            columnName="Region" 
-                            allValues={getFilteredElekhaDataForColumn('Region').map(d => d.Region)} 
-                            selectedFilters={elekhaColumnFilters.Region} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="DDO" 
-                            columnName="DDO Code" 
-                            allValues={getFilteredElekhaDataForColumn('DDO Code').map(d => d['DDO Code'])} 
-                            selectedFilters={elekhaColumnFilters['DDO Code']} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="HO" 
-                            columnName="HO" 
-                            allValues={getFilteredElekhaDataForColumn('HO').map(d => d.HO)} 
-                            selectedFilters={elekhaColumnFilters.HO} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="Division" 
-                            columnName="Division" 
-                            allValues={getFilteredElekhaDataForColumn('Division').map(d => d.Division)} 
-                            selectedFilters={elekhaColumnFilters.Division} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="HOA" 
-                            columnName="HOA" 
-                            allValues={getFilteredElekhaDataForColumn('HOA').map(d => d.HOA)} 
-                            selectedFilters={elekhaColumnFilters.HOA} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="Description" 
-                            columnName="Description" 
-                            allValues={getFilteredElekhaDataForColumn('Description').map(d => d.Description)} 
-                            selectedFilters={elekhaColumnFilters.Description} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th className="text-right">
-                          <ColumnHeaderFilter 
-                            title="Receipts" 
-                            columnName="Receipt (Rs.)" 
-                            allValues={getFilteredElekhaDataForColumn('Receipt (Rs.)').map(d => String(d['Receipt (Rs.)'] || '0').trim())} 
-                            selectedFilters={elekhaColumnFilters['Receipt (Rs.)']} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th className="text-right">
-                          <ColumnHeaderFilter 
-                            title="Payments" 
-                            columnName="Payment (Rs.)" 
-                            allValues={getFilteredElekhaDataForColumn('Payment (Rs.)').map(d => String(d['Payment (Rs.)'] || '0').trim())} 
-                            selectedFilters={elekhaColumnFilters['Payment (Rs.)']} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th>
-                          <ColumnHeaderFilter 
-                            title="Remark" 
-                            columnName="Remark" 
-                            allValues={getFilteredElekhaDataForColumn('Remark').map(d => String(d['Remark'] || '').trim())} 
-                            selectedFilters={elekhaColumnFilters['Remark']} 
-                            onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
+            <div className="table-wrapper top-scrollbar">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="TE Number" 
+                        columnName="TE Number" 
+                        allValues={getFilteredElekhaDataForColumn('TE Number').map(d => String(d['TE Number'] || ''))} 
+                        selectedFilters={elekhaColumnFilters['TE Number']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Txn Date" 
+                        columnName="Txn Date" 
+                        allValues={getFilteredElekhaDataForColumn('Txn Date').map(d => d['Txn Date'])} 
+                        selectedFilters={elekhaColumnFilters['Txn Date']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Month" 
+                        columnName="Month" 
+                        allValues={getFilteredElekhaDataForColumn('Month').map(d => d.Month)} 
+                        selectedFilters={elekhaColumnFilters.Month} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Region" 
+                        columnName="Region" 
+                        allValues={getFilteredElekhaDataForColumn('Region').map(d => d.Region)} 
+                        selectedFilters={elekhaColumnFilters.Region} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="DDO" 
+                        columnName="DDO Code" 
+                        allValues={getFilteredElekhaDataForColumn('DDO Code').map(d => d['DDO Code'])} 
+                        selectedFilters={elekhaColumnFilters['DDO Code']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="HO" 
+                        columnName="HO" 
+                        allValues={getFilteredElekhaDataForColumn('HO').map(d => d.HO)} 
+                        selectedFilters={elekhaColumnFilters.HO} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Division" 
+                        columnName="Division" 
+                        allValues={getFilteredElekhaDataForColumn('Division').map(d => d.Division)} 
+                        selectedFilters={elekhaColumnFilters.Division} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="HOA" 
+                        columnName="HOA" 
+                        allValues={getFilteredElekhaDataForColumn('HOA').map(d => d.HOA)} 
+                        selectedFilters={elekhaColumnFilters.HOA} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Description" 
+                        columnName="Description" 
+                        allValues={getFilteredElekhaDataForColumn('Description').map(d => d.Description)} 
+                        selectedFilters={elekhaColumnFilters.Description} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="Receipts" 
+                        columnName="Receipt (Rs.)" 
+                        allValues={getFilteredElekhaDataForColumn('Receipt (Rs.)').map(d => String(d['Receipt (Rs.)'] || '0').trim())} 
+                        selectedFilters={elekhaColumnFilters['Receipt (Rs.)']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="Payments" 
+                        columnName="Payment (Rs.)" 
+                        allValues={getFilteredElekhaDataForColumn('Payment (Rs.)').map(d => String(d['Payment (Rs.)'] || '0').trim())} 
+                        selectedFilters={elekhaColumnFilters['Payment (Rs.)']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Remark" 
+                        columnName="Remark" 
+                        allValues={getFilteredElekhaDataForColumn('Remark').map(d => String(d['Remark'] || '').trim())} 
+                        selectedFilters={elekhaColumnFilters['Remark']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredElekhaData.length === 0 ? (
+                    <tr>
+                      <td colSpan={12} className="text-center" style={{ padding: '3rem', color: 'var(--text-secondary)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <AlertCircle size={24} style={{ color: 'var(--color-warning)' }} />
+                          <span style={{ fontWeight: 600 }}>No transactions found matching active filters.</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedElekhaData.map((row, idx) => (
+                      <tr key={idx}>
+                        <td>{row['TE Number'] || '–'}</td>
+                        <td>{row['Txn Date'] || '–'}</td>
+                        <td>{row['Month'] || '–'}</td>
+                        <td>{row['Region'] || '–'}</td>
+                        <td>{row['DDO Code'] || '–'}</td>
+                        <td>{row['HO'] || '–'}</td>
+                        <td>{row['Division'] || '–'}</td>
+                        <td>{row['HOA'] || '–'}</td>
+                        <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.Description}>
+                          {row.Description || '–'}
+                        </td>
+                        <td className="text-right" style={{ color: parseNumber(row['Receipt (Rs.)']) > 0 ? 'var(--color-success)' : 'inherit' }}>
+                          {row['Receipt (Rs.)'] || '–'}
+                        </td>
+                        <td className="text-right" style={{ color: parseNumber(row['Payment (Rs.)']) > 0 ? 'var(--color-warning)' : 'inherit' }}>
+                          {row['Payment (Rs.)'] || '–'}
+                        </td>
+                        <td style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.Remark}>
+                          {row.Remark || '–'}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {filteredElekhaData.length === 0 ? (
-                        <tr>
-                          <td colSpan={12} className="text-center" style={{ padding: '3rem', color: 'var(--text-secondary)' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                              <AlertCircle size={24} style={{ color: 'var(--color-warning)' }} />
-                              <span style={{ fontWeight: 600 }}>No transactions found matching active filters.</span>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : (
-                        paginatedElekhaData.map((row, idx) => (
-                          <tr key={idx}>
-                            <td>{row['TE Number'] || '–'}</td>
-                            <td>{row['Txn Date'] || '–'}</td>
-                            <td>{row['Month'] || '–'}</td>
-                            <td>{row['Region'] || '–'}</td>
-                            <td>{row['DDO Code'] || '–'}</td>
-                            <td>{row['HO'] || '–'}</td>
-                            <td>{row['Division'] || '–'}</td>
-                            <td>{row['HOA'] || '–'}</td>
-                            <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.Description}>
-                              {row.Description || '–'}
-                            </td>
-                            <td className="text-right" style={{ color: parseNumber(row['Receipt (Rs.)']) > 0 ? 'var(--color-success)' : 'inherit' }}>
-                              {row['Receipt (Rs.)'] || '–'}
-                            </td>
-                            <td className="text-right" style={{ color: parseNumber(row['Payment (Rs.)']) > 0 ? 'var(--color-warning)' : 'inherit' }}>
-                              {row['Payment (Rs.)'] || '–'}
-                            </td>
-                            <td style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.Remark}>
-                              {row.Remark || '–'}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination and Exports */}
+            {filteredElekhaData.length > 0 && (
+              <div className="pagination-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {/* Bottom Left Exports */}
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button 
+                    onClick={handleExportElekhaCSV} 
+                    className="pg-btn" 
+                    style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', fontWeight: 600 }}
+                  >
+                    <Download size={14} /> Export to CSV
+                  </button>
+                  <button 
+                    onClick={handleExportElekhaExcel} 
+                    className="pg-btn" 
+                    style={{ backgroundColor: '#22c55e', color: 'white', border: 'none', fontWeight: 600 }}
+                  >
+                    <Download size={14} /> Export to Excel
+                  </button>
                 </div>
 
-                {/* Pagination and Exports */}
-                {filteredElekhaData.length > 0 && (
-                  <div className="pagination-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    {/* Bottom Left Exports */}
-                    <div style={{ display: 'flex', gap: '0.75rem' }}>
-                      <button 
-                        onClick={handleExportElekhaCSV} 
-                        className="pg-btn" 
-                        style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', fontWeight: 600 }}
-                      >
-                        <Download size={14} /> Export to CSV
-                      </button>
-                      <button 
-                        onClick={handleExportElekhaExcel} 
-                        className="pg-btn" 
-                        style={{ backgroundColor: '#22c55e', color: 'white', border: 'none', fontWeight: 600 }}
-                      >
-                        <Download size={14} /> Export to Excel
-                      </button>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                      <div className="pagination-info">
-                        Showing <strong>{elekhaPage * elekhaRowsPerPage + 1}</strong> to <strong>{Math.min((elekhaPage + 1) * elekhaRowsPerPage, filteredElekhaData.length)}</strong> of <strong>{filteredElekhaData.length}</strong> records
-                      </div>
-                      <select 
-                        className="custom-select" 
-                        value={elekhaRowsPerPage} 
-                        onChange={(e) => {
-                          setElekhaRowsPerPage(parseInt(e.target.value, 10));
-                          setElekhaPage(0);
-                        }}
-                        style={{ padding: '0.4rem 2rem 0.4rem 1rem', minWidth: '80px' }}
-                      >
-                        <option value="25">25 rows</option>
-                        <option value="50">50 rows</option>
-                        <option value="100">100 rows</option>
-                      </select>
-
-                      <div className="pagination-buttons" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <button 
-                          className="pg-btn" 
-                          disabled={elekhaPage === 0} 
-                          onClick={() => setElekhaPage(prev => Math.max(prev - 1, 0))}
-                        >
-                          <ChevronLeft size={16} /> Prev
-                        </button>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Page:</span>
-                          <input 
-                            type="text" 
-                            className="custom-input" 
-                            value={elekhaPageInput} 
-                            onChange={(e) => {
-                              const val = e.target.value.replace(/\D/g, ''); // only digits
-                              setElekhaPageInput(val);
-                              if (val) {
-                                const pNum = parseInt(val, 10) - 1;
-                                const maxPage = Math.ceil(filteredElekhaData.length / elekhaRowsPerPage) - 1;
-                                if (pNum >= 0 && pNum <= maxPage) {
-                                  setElekhaPage(pNum);
-                                }
-                              }
-                            }}
-                            style={{
-                              width: '45px',
-                              padding: '4px 6px',
-                              borderRadius: '4px',
-                              border: '1px solid var(--border-color)',
-                              backgroundColor: 'var(--bg-input)',
-                              color: 'var(--text-primary)',
-                              height: '30px',
-                              textAlign: 'center',
-                              fontSize: '0.85rem'
-                            }}
-                          />
-                          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/ {Math.ceil(filteredElekhaData.length / elekhaRowsPerPage)}</span>
-                        </div>
-
-                        <button 
-                          className="pg-btn" 
-                          disabled={(elekhaPage + 1) * elekhaRowsPerPage >= filteredElekhaData.length} 
-                          onClick={() => setElekhaPage(prev => prev + 1)}
-                        >
-                          Next <ChevronRight size={16} />
-                        </button>
-                      </div>
-                    </div>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <div className="pagination-info">
+                    Showing <strong>{elekhaPage * elekhaRowsPerPage + 1}</strong> to <strong>{Math.min((elekhaPage + 1) * elekhaRowsPerPage, filteredElekhaData.length)}</strong> of <strong>{filteredElekhaData.length}</strong> records
                   </div>
-                )}
-              </>
-            </>
-          )}
+                  <select 
+                    className="custom-select" 
+                    value={elekhaRowsPerPage} 
+                    onChange={(e) => {
+                      setElekhaRowsPerPage(parseInt(e.target.value, 10));
+                      setElekhaPage(0);
+                    }}
+                    style={{ padding: '0.4rem 2rem 0.4rem 1rem', minWidth: '80px' }}
+                  >
+                    <option value="25">25 rows</option>
+                    <option value="50">50 rows</option>
+                    <option value="100">100 rows</option>
+                  </select>
+
+                  <div className="pagination-buttons" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button 
+                      className="pg-btn" 
+                      disabled={elekhaPage === 0} 
+                      onClick={() => setElekhaPage(prev => Math.max(prev - 1, 0))}
+                    >
+                      <ChevronLeft size={16} /> Prev
+                    </button>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Page:</span>
+                      <input 
+                        type="text" 
+                        className="custom-input" 
+                        value={elekhaPageInput} 
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, ''); // only digits
+                          setElekhaPageInput(val);
+                          if (val) {
+                            const pNum = parseInt(val, 10) - 1;
+                            const maxPage = Math.ceil(filteredElekhaData.length / elekhaRowsPerPage) - 1;
+                            if (pNum >= 0 && pNum <= maxPage) {
+                              setElekhaPage(pNum);
+                            }
+                          }
+                        }}
+                        style={{
+                          width: '45px',
+                          padding: '4px 6px',
+                          borderRadius: '4px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--bg-input)',
+                          color: 'var(--text-primary)',
+                          height: '30px',
+                          textAlign: 'center',
+                          fontSize: '0.85rem'
+                        }}
+                      />
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/ {Math.ceil(filteredElekhaData.length / elekhaRowsPerPage)}</span>
+                    </div>
+
+                    <button 
+                      className="pg-btn" 
+                      disabled={(elekhaPage + 1) * elekhaRowsPerPage >= filteredElekhaData.length} 
+                      onClick={() => setElekhaPage(prev => prev + 1)}
+                    >
+                      Next <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
 
         {/* Tab 3: Rebuilt Vertical Revenue Report View (Horizontal Matrix Comparison Grid) */}
         {activeTab === 'revenue' && (
@@ -4591,10 +4784,10 @@ export default function App() {
                               const hoaCode = String(hoa['HOA Code'] || '').trim();
                               return (
                                 <tr key={hoaCode} className={clsRow}>
-                                  <td style={{ fontWeight: 600 }}>{translateCategoryVal(cat)}</td>
+                                  <td style={{ fontWeight: 500 }}>{translateCategoryVal(cat)}</td>
                                   <td><code>{hoaCode}</code></td>
-                                  <td style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={hoa.Description}>
-                                    {hoa.Description || '–'}
+                                  <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hoa.Description}>
+                                    {hoa.Description}
                                   </td>
                                   {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
                                     const val1 = verticalRevenueReportData.p1Totals[`${hoaCode}_${g.name}`] || 0;
@@ -4926,15 +5119,101 @@ export default function App() {
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Office</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. CO Ahd" 
-                        className="custom-input"
-                        value={manageOffice}
-                        onChange={(e) => setManageOffice(e.target.value)}
-                        style={{ height: '38px', width: '100%', boxSizing: 'border-box' }}
-                      />
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        Office Access ({manageOffices.length} Selected)
+                      </label>
+                      <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', padding: '10px', backgroundColor: 'var(--bg-input)' }}>
+                        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                          <input 
+                            type="text" 
+                            placeholder="Search offices..." 
+                            value={officeSearchQuery}
+                            onChange={(e) => setOfficeSearchQuery(e.target.value)}
+                            className="custom-input"
+                            style={{ height: '32px', fontSize: '0.8rem', flex: 1, padding: '0 8px', boxSizing: 'border-box' }}
+                          />
+                          <button 
+                            type="button" 
+                            onClick={() => setManageOffices(officeMapping.map(o => String(o['Office ID'])))}
+                            className="pg-btn"
+                            style={{ padding: '0 8px', fontSize: '0.75rem', height: '32px', cursor: 'pointer' }}
+                          >
+                            Select All
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={() => setManageOffices([])}
+                            className="pg-btn"
+                            style={{ padding: '0 8px', fontSize: '0.75rem', height: '32px', cursor: 'pointer' }}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <div style={{ maxHeight: '120px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '4px' }}>
+                          {officeMapping
+                            .filter(o => {
+                              const search = officeSearchQuery.toLowerCase();
+                              return (
+                                String(o['Office ID']).includes(search) || 
+                                String(o['Office Name']).toLowerCase().includes(search)
+                              );
+                            })
+                            .map(o => {
+                              const oId = String(o['Office ID']);
+                              const isChecked = manageOffices.includes(oId);
+                              return (
+                                <label key={oId} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setManageOffices([...manageOffices, oId]);
+                                      } else {
+                                        setManageOffices(manageOffices.filter(id => id !== oId));
+                                      }
+                                    }}
+                                  />
+                                  <span>{o['Office Name']} ({oId})</span>
+                                </label>
+                              );
+                            })
+                          }
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        Tab Rights Access
+                      </label>
+                      <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', padding: '10px', backgroundColor: 'var(--bg-input)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {[
+                          { key: 'budget', label: 'Budget Report' },
+                          { key: 'elekha', label: 'e-Lekha Transactions' },
+                          { key: 'revenue', label: 'Vertical Revenue' },
+                          { key: 'users', label: 'User Management (SA)' },
+                          { key: 'sync', label: 'Database Sync (SA)' }
+                        ].map(r => {
+                          const isChecked = manageRights.includes(r.key);
+                          return (
+                            <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setManageRights([...manageRights, r.key]);
+                                  } else {
+                                    setManageRights(manageRights.filter(key => key !== r.key));
+                                  }
+                                }}
+                              />
+                              <span>{r.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -5001,6 +5280,133 @@ export default function App() {
                         }}
                       >
                         Save User
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+            {showChangePasswordModal && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.65)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999,
+                padding: '20px'
+              }}>
+                <div style={{
+                  backgroundColor: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-lg)',
+                  width: '100%',
+                  maxWidth: '450px',
+                  padding: '30px',
+                  boxShadow: 'var(--shadow-premium)'
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '15px', textAlign: 'center' }}>🔑</div>
+                  <h3 style={{ fontSize: '1.25rem', marginBottom: '1.25rem', textAlign: 'center', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                    Change Password
+                  </h3>
+
+                  <form onSubmit={handleVoluntaryPasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Current Password</label>
+                      <div style={{ position: 'relative' }}>
+                        <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input 
+                          type="password" 
+                          placeholder="Enter Current Password" 
+                          value={vCurrentPassword}
+                          onChange={(e) => setVCurrentPassword(e.target.value)}
+                          className="custom-input"
+                          style={{ paddingLeft: '38px', width: '100%', height: '38px', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>New Password</label>
+                      <div style={{ position: 'relative' }}>
+                        <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input 
+                          type="password" 
+                          placeholder="Enter New Password" 
+                          value={vNewPassword}
+                          onChange={(e) => setVNewPassword(e.target.value)}
+                          className="custom-input"
+                          style={{ paddingLeft: '38px', width: '100%', height: '38px', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Confirm New Password</label>
+                      <div style={{ position: 'relative' }}>
+                        <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input 
+                          type="password" 
+                          placeholder="Confirm New Password" 
+                          value={vConfirmNewPassword}
+                          onChange={(e) => setVConfirmNewPassword(e.target.value)}
+                          className="custom-input"
+                          style={{ paddingLeft: '38px', width: '100%', height: '38px', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+
+                    {vPasswordChangeError && (
+                      <div style={{
+                        color: 'var(--color-error)',
+                        fontSize: '0.8rem',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        padding: '10px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <AlertTriangle size={14} />
+                        <span>{vPasswordChangeError}</span>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '1rem' }}>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setShowChangePasswordModal(false);
+                          setVCurrentPassword('');
+                          setVNewPassword('');
+                          setVConfirmNewPassword('');
+                          setVPasswordChangeError('');
+                        }}
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-secondary)'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        type="submit" 
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'var(--color-primary)',
+                          color: '#14210f',
+                          border: 'none',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        Change Password
                       </button>
                     </div>
                   </form>
