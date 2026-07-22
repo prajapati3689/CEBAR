@@ -1,9 +1,10 @@
 /* Custom Styling System for CEBAR Dashboard - "Chartered Ledger" Corporate Identity */
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
-:root {
+:root,
+[data-theme="dark"] {
   /* Theme variables — Chartered Ledger: deep navy vault + brass/gold foil accents */
-  --bg-app: #0a1420;
+  --bg-app: #CFFFDC;
   --bg-card: rgba(17, 30, 48, 0.62);
   --bg-card-hover: rgba(24, 40, 63, 0.78);
   --bg-input: #101d30;
@@ -17,7 +18,7 @@
   --color-primary: #c9a227;
   --color-primary-rgb: 201, 162, 39;
   --color-accent: #1f6f5c;
-  --color-gradient-start: #0a1420;
+  --color-gradient-start: #CFFFDC;
   --color-gradient-end: #182c46;
   
   /* Alert status colors */
@@ -1238,5 +1239,3 @@ body {
     animation: none !important;
   }
 }
-
-
