@@ -111,6 +111,7 @@ body {
   letter-spacing: -0.3px;
   background: linear-gradient(120deg, #e8c766 0%, #c9a227 45%, #9c7a1a 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   display: flex;
   align-items: center;
@@ -1152,6 +1153,7 @@ body {
   letter-spacing: 1px;
   background: linear-gradient(120deg, #e8c766 0%, #c9a227 50%, #9c7a1a 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-top: 0.5rem;
   animation: fade-in-up 0.6s ease both;
