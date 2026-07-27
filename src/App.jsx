@@ -103,687 +103,1779 @@ const formatINR = (value) => {
   }).format(value);
 };
 
-// Formats numbers with commas according to Indian Numbering System
-const formatIndianNumber = (value) => {
-  if (value === undefined || value === null || isNaN(value)) return '0.00';
+// Formats table cells (returns – for 0)
+const formatTableValue = (value) => {
+  if (value === undefined || value === null || isNaN(value) || value === 0) return '–';
   return new Intl.NumberFormat('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(value);
 };
 
-export default function App() {
-  // Navigation / Tab state
-  const [activeTab, setActiveTab] = useState('budget'); // 'budget', 'elekha', 'mapping', 'vertical', 'settings'
+// Formats YYYY-MM-DD report date to DD-MMM-YYYY
+const formatReportDate = (dateStr) => {
+  if (!dateStr) return '–';
+  const parts = dateStr.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    const year = parts[0];
+    const month = parts[1];
+    const day = parts[2];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const mIdx = parseInt(month, 10) - 1;
+    if (mIdx >= 0 && mIdx < 12) {
+      return `${day}-${months[mIdx]}-${year}`;
+    }
+  }
+  return dateStr;
+};
 
-  // User Management State
-  const [currentUser, setCurrentUser] = useState(null); // { username, role: 'admin'|'user' }
-  const [usersList, setUsersList] = useState([]);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
-  
-  // Login Form State
-  const [loginUsername, setLoginUsername] = useState('');
+// Sorts months chronologically
+const getSortedUniqueMonths = (data) => {
+  const months = Array.from(new Set(data.map(d => d.Month).filter(Boolean)));
+  const monthOrder = {
+    'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+    'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+  };
+  return months.sort((a, b) => {
+    const parse = (s) => {
+      const parts = s.split(' ');
+      if (parts.length < 2) return 0;
+      const m = parts[0].substring(0, 3);
+      const y = parseInt(parts[1], 10);
+      return y * 12 + (monthOrder[m] || 0);
+    };
+    return parse(a) - parse(b);
+  });
+};
+
+// Column header dropdown filter component
+function ColumnHeaderFilter({ title, columnName, allValues, selectedFilters, onChange }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Get unique sorted values for this column
+  const uniqueValues = useMemo(() => {
+    const vals = Array.from(new Set(allValues.map(v => (v === undefined || v === null) ? '' : String(v).trim()).filter(x => x !== '')));
+    return vals.sort((a, b) => {
+      const numA = parseFloat(a.replace(/,/g, ''));
+      const numB = parseFloat(b.replace(/,/g, ''));
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return numA - numB;
+      }
+      return a.localeCompare(b);
+    });
+  }, [allValues]);
+
+  // Filter values inside dropdown based on search
+  const filteredVals = useMemo(() => {
+    if (!searchTerm.trim()) return uniqueValues;
+    const s = searchTerm.toLowerCase();
+    return uniqueValues.filter(v => v.toLowerCase().includes(s));
+  }, [uniqueValues, searchTerm]);
+
+  const handleCheckboxChange = (val, checked) => {
+    const next = new Set(selectedFilters || []);
+    if (checked) {
+      next.add(val);
+    } else {
+      next.delete(val);
+    }
+    onChange(columnName, next);
+  };
+
+  const handleSelectAll = () => {
+    onChange(columnName, new Set(uniqueValues));
+  };
+
+  const handleClear = () => {
+    onChange(columnName, new Set());
+  };
+
+  const toggle = (e) => {
+    e.stopPropagation();
+    setIsOpen(!isOpen);
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleOutsideClick = () => setIsOpen(false);
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, [isOpen]);
+
+  const activeCount = selectedFilters ? selectedFilters.size : 0;
+  const isFiltered = activeCount > 0 && activeCount < uniqueValues.length;
+
+  return (
+    <div className="header-filter-container" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+      <span className="th-title" style={{ whiteSpace: 'nowrap' }}>{title}</span>
+      <button 
+        type="button" 
+        onClick={toggle} 
+        className={`filter-toggle-btn ${isFiltered ? 'active' : ''}`}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: isFiltered ? 'var(--color-primary)' : 'var(--text-muted)',
+          cursor: 'pointer',
+          padding: '2px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Filter size={12} />
+      </button>
+
+      {isOpen && (
+        <div 
+          className="header-filter-popup"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            backgroundColor: 'var(--bg-input)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '10px',
+            boxShadow: 'var(--shadow-premium)',
+            zIndex: 1000,
+            minWidth: '220px',
+            maxHeight: '320px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Filter {title}</span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" onClick={handleSelectAll} className="filter-popup-btn">All</button>
+              <button type="button" onClick={handleClear} className="filter-popup-btn">Clear</button>
+            </div>
+          </div>
+
+          <input 
+            type="text" 
+            placeholder="Search..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '4px 8px',
+              fontSize: '0.8rem',
+              borderRadius: '4px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--bg-app)',
+              color: 'var(--text-primary)'
+            }}
+          />
+
+          <div 
+            style={{
+              overflowY: 'auto',
+              maxHeight: '180px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              paddingRight: '4px',
+              textAlign: 'left',
+              paddingBottom: '100px' // Spacing of approx 5 rows at bottom for easy scrolling/viewing options
+            }}
+          >
+            {filteredVals.length === 0 ? (
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No matches</span>
+            ) : (
+              filteredVals.map(val => {
+                const isChecked = selectedFilters ? selectedFilters.has(val) : false;
+                const displayVal = columnName === 'Category' ? translateCategoryVal(val) : val;
+                return (
+                  <label key={val} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-primary)' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={isChecked}
+                      onChange={(e) => handleCheckboxChange(val, e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={displayVal}>{displayVal}</span>
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Category translation utility
+const translateCategoryVal = (val) => {
+  const categoryDisplayNames = {
+    'CCS': 'CCS',
+    'FS': 'FS',
+    'IRGB': 'IRGB',
+    'MO': 'MO',
+    'Parcel': 'Parcel',
+    'PLI': 'PLI(4% of total)',
+    'PLI Direct Cost': 'PLI-Direct Cost',
+    'RPLI': 'RPLI(12% of total)',
+    'RPLI Direct Cost': 'RPLI-Direct Cost'
+  };
+  return categoryDisplayNames[val] || val;
+};
+
+// SVG-based responsive Chart Components
+function SVGPieChart({ data, colors }) {
+  const total = data.reduce((sum, item) => sum + (item.value || 0), 0);
+  if (total === 0) return <div style={{ color: 'var(--text-muted)', padding: '20px', fontSize: '0.85rem' }}>No data to display</div>;
+
+  let accumulatedAngle = 0;
+  const radius = 80;
+  const cx = 90;
+  const cy = 90;
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
+      <svg width="180" height="180" viewBox="0 0 180 180">
+        {data.map((item, idx) => {
+          if (!item.value || item.value <= 0) return null;
+          const percentage = item.value / total;
+          const angle = percentage * 360;
+          
+          const x1 = cx + radius * Math.cos((accumulatedAngle - 90) * Math.PI / 180);
+          const y1 = cy + radius * Math.sin((accumulatedAngle - 90) * Math.PI / 180);
+          
+          accumulatedAngle += angle;
+          
+          const x2 = cx + radius * Math.cos((accumulatedAngle - 90) * Math.PI / 180);
+          const y2 = cy + radius * Math.sin((accumulatedAngle - 90) * Math.PI / 180);
+          
+          const largeArcFlag = angle > 180 ? 1 : 0;
+          const pathData = `
+            M ${cx} ${cy}
+            L ${x1} ${y1}
+            A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}
+            Z
+          `;
+          
+          const color = colors[idx % colors.length];
+          return (
+            <path 
+              key={idx}
+              d={pathData} 
+              fill={color} 
+              stroke="var(--bg-card)" 
+              strokeWidth="1.5"
+              style={{ transition: 'opacity 0.2s', cursor: 'pointer' }}
+            >
+              <title>{item.label}: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(item.value)} ({(percentage * 100).toFixed(1)}%)</title>
+            </path>
+          );
+        })}
+      </svg>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignSelf: 'center', textAlign: 'left', maxWidth: '280px', fontSize: '0.8rem' }}>
+        {data.map((item, idx) => {
+          if (!item.value || item.value <= 0) return null;
+          const color = colors[idx % colors.length];
+          return (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: color, borderRadius: '2px', flexShrink: 0 }}></span>
+              <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.label}>
+                {item.label}: <strong>{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(item.value)}</strong> ({(item.value / total * 100).toFixed(1)}%)
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SVGBarChart({ data, colors }) {
+  const maxVal = Math.max(...data.map(item => Math.max(item.value || 0, item.value2 || 0)), 1);
+  const chartHeight = 220;
+  const chartWidth = 550;
+  const paddingLeft = 60;
+  const paddingRight = 20;
+  const paddingTop = 20;
+  const paddingBottom = 40;
+  const graphHeight = chartHeight - paddingTop - paddingBottom;
+  const graphWidth = chartWidth - paddingLeft - paddingRight;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', padding: '10px' }}>
+      <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ maxWidth: '650px' }}>
+        {/* Y Axis Gridlines and Labels */}
+        {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
+          const y = paddingTop + graphHeight * (1 - ratio);
+          const gridVal = new Intl.NumberFormat('en-IN', { notation: 'compact', compactDisplay: 'short' }).format(maxVal * ratio);
+          return (
+            <g key={idx}>
+              <line x1={paddingLeft} y1={y} x2={chartWidth - paddingRight} y2={y} stroke="rgba(255,255,255,0.06)" strokeDasharray="3" />
+              <text x={paddingLeft - 10} y={y + 3} fill="var(--text-muted)" fontSize="9" textAnchor="end">{gridVal}</text>
+            </g>
+          );
+        })}
+
+        {/* Bars */}
+        {data.map((item, idx) => {
+          const x = paddingLeft + (graphWidth / data.length) * idx;
+          const barWidth = (graphWidth / data.length) * 0.65;
+          const barSpacing = (graphWidth / data.length) * 0.175;
+          
+          const bar1Height = ((item.value || 0) / maxVal) * graphHeight;
+          const bar1Y = paddingTop + graphHeight - bar1Height;
+          const color1 = colors[0 % colors.length];
+
+          const hasTwoBars = item.value2 !== undefined;
+          const singleBarWidth = hasTwoBars ? barWidth / 2 - 2 : barWidth;
+
+          return (
+            <g key={idx}>
+              {/* Bar 1 */}
+              <rect 
+                x={x + barSpacing} 
+                y={bar1Y} 
+                width={singleBarWidth} 
+                height={bar1Height} 
+                fill={color1} 
+                rx="3"
+                style={{ transition: 'all 0.3s', cursor: 'pointer' }}
+              >
+                <title>{item.label}: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(item.value)}</title>
+              </rect>
+
+              {/* Bar 2 */}
+              {hasTwoBars && (
+                <rect 
+                  x={x + barSpacing + singleBarWidth + 4} 
+                  y={paddingTop + graphHeight - ((item.value2 || 0) / maxVal) * graphHeight} 
+                  width={singleBarWidth} 
+                  height={((item.value2 || 0) / maxVal) * graphHeight} 
+                  fill={colors[1 % colors.length]} 
+                  rx="3"
+                  style={{ transition: 'all 0.3s', cursor: 'pointer' }}
+                >
+                  <title>{item.label} (Allotted/P2): {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(item.value2)}</title>
+                </rect>
+              )}
+
+              {/* Label */}
+              <text 
+                x={x + barSpacing + barWidth / 2} 
+                y={chartHeight - paddingBottom + 16} 
+                fill="var(--text-secondary)" 
+                fontSize="9" 
+                textAnchor="middle"
+              >
+                {item.label.length > 10 ? item.label.substring(0, 9) + '..' : item.label}
+              </text>
+            </g>
+          );
+        })}
+        {/* X Axis line */}
+        <line x1={paddingLeft} y1={chartHeight - paddingBottom} x2={chartWidth - paddingRight} y2={chartHeight - paddingBottom} stroke="var(--border-color)" />
+      </svg>
+    </div>
+  );
+}
+
+function SVGLineChart({ data, colors }) {
+  const maxVal = Math.max(...data.map(item => Math.max(item.value || 0, item.value2 || 0)), 1);
+  const chartHeight = 220;
+  const chartWidth = 550;
+  const paddingLeft = 60;
+  const paddingRight = 20;
+  const paddingTop = 20;
+  const paddingBottom = 40;
+  const graphHeight = chartHeight - paddingTop - paddingBottom;
+  const graphWidth = chartWidth - paddingLeft - paddingRight;
+
+  const points1 = data.map((item, idx) => {
+    const x = paddingLeft + (graphWidth / (data.length - 1 || 1)) * idx;
+    const y = paddingTop + graphHeight - ((item.value || 0) / maxVal) * graphHeight;
+    return `${x},${y}`;
+  }).join(' ');
+
+  const pathD1 = points1 ? `M ${points1}` : '';
+
+  const hasLine2 = data.some(item => item.value2 !== undefined);
+  const points2 = hasLine2 ? data.map((item, idx) => {
+    const x = paddingLeft + (graphWidth / (data.length - 1 || 1)) * idx;
+    const y = paddingTop + graphHeight - ((item.value2 || 0) / maxVal) * graphHeight;
+    return `${x},${y}`;
+  }).join(' ') : '';
+  const pathD2 = points2 ? `M ${points2}` : '';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', padding: '10px' }}>
+      <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ maxWidth: '650px' }}>
+        {/* Y Gridlines and Labels */}
+        {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
+          const y = paddingTop + graphHeight * (1 - ratio);
+          const gridVal = new Intl.NumberFormat('en-IN', { notation: 'compact', compactDisplay: 'short' }).format(maxVal * ratio);
+          return (
+            <g key={idx}>
+              <line x1={paddingLeft} y1={y} x2={chartWidth - paddingRight} y2={y} stroke="rgba(255,255,255,0.06)" strokeDasharray="3" />
+              <text x={paddingLeft - 10} y={y + 3} fill="var(--text-muted)" fontSize="9" textAnchor="end">{gridVal}</text>
+            </g>
+          );
+        })}
+
+        {/* Path Line 1 */}
+        {pathD1 && (
+          <path 
+            d={pathD1} 
+            fill="none" 
+            stroke={colors[0 % colors.length]} 
+            strokeWidth="3" 
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+
+        {/* Path Line 2 */}
+        {hasLine2 && pathD2 && (
+          <path 
+            d={pathD2} 
+            fill="none" 
+            stroke={colors[1 % colors.length]} 
+            strokeWidth="3" 
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+
+        {/* Dots & Labels */}
+        {data.map((item, idx) => {
+          const x = paddingLeft + (graphWidth / (data.length - 1 || 1)) * idx;
+          const y1 = paddingTop + graphHeight - ((item.value || 0) / maxVal) * graphHeight;
+          const y2 = hasLine2 ? paddingTop + graphHeight - ((item.value2 || 0) / maxVal) * graphHeight : 0;
+
+          return (
+            <g key={idx}>
+              {/* Dot 1 */}
+              <circle cx={x} cy={y1} r="4" fill={colors[0 % colors.length]} stroke="var(--bg-card)" strokeWidth="1.5" style={{ cursor: 'pointer' }}>
+                <title>{item.label}: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(item.value)}</title>
+              </circle>
+
+              {/* Dot 2 */}
+              {hasLine2 && (
+                <circle cx={x} cy={y2} r="4" fill={colors[1 % colors.length]} stroke="var(--bg-card)" strokeWidth="1.5" style={{ cursor: 'pointer' }}>
+                  <title>{item.label} (Allotted/P2): {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(item.value2)}</title>
+                </circle>
+              )}
+
+              {/* X Label */}
+              <text x={x} y={chartHeight - paddingBottom + 16} fill="var(--text-secondary)" fontSize="9" textAnchor="middle">
+                {item.label.length > 10 ? item.label.substring(0, 9) + '..' : item.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* X Axis line */}
+        <line x1={paddingLeft} y1={chartHeight - paddingBottom} x2={chartWidth - paddingRight} y2={chartHeight - paddingBottom} stroke="var(--border-color)" />
+      </svg>
+    </div>
+  );
+}
+
+
+const BUDGET_COLUMNS = [
+  'Year',
+  'Office ID',
+  'Office Name',
+  'HOA',
+  'HOA Description',
+  'Allocation Type',
+  'Allotted Budget (A)',
+  'Reallotted Budget (B)',
+  'Distributed Budget (C)',
+  'Transferred Budget (D)',
+  'Re-Appropritaion Receipt (E)',
+  'Re-Appropritaion Transferred (F)',
+  'Reserved Budget (G)',
+  'Consumed Budget (H)',
+  'Consumable Budget (I)',
+  'Liability (J)',
+  'Approver Remarks'
+];
+
+const ELEKHA_COLUMNS = [
+  'Month',
+  'DDO Code',
+  'HO',
+  'Division',
+  'Region',
+  'TE Number',
+  'Txn Date',
+  'HOA',
+  'Description',
+  'Receipt (Rs.)',
+  'Payment (Rs.)',
+  'Remark'
+];
+
+export default function App() {
+  // Global / Navigation State
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = sessionStorage.getItem('cebar_tab');
+    return saved || 'budget';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('cebar_tab', activeTab);
+  }, [activeTab]);
+  const [theme, setTheme] = useState('dark');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('cebar_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return !!localStorage.getItem('cebar_user');
+  });
+  const [loginUserId, setLoginUserId] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showUserTooltip, setShowUserTooltip] = useState(false);
 
-  // User Management Modal State
-  const [showAddUserModal, setShowAddUserModal] = useState(false);
-  const [newUsername, setNewUsername] = useState('');
+  // Force Password Change State
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState('user');
-  const [userManagementError, setUserManagementError] = useState('');
-  const [userManagementSuccess, setUserManagementSuccess] = useState('');
-
-  // Password Change State
-  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPasswordChange, setNewPasswordChange] = useState('');
-  const [confirmPasswordChange, setConfirmPasswordChange] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordChangeError, setPasswordChangeError] = useState('');
-  const [passwordChangeSuccess, setPasswordChangeSuccess] = useState('');
 
-  // Raw data state
-  const [budgetData, setBudgetData] = useState([]);
+  // Voluntary Password Change State
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [vCurrentPassword, setVCurrentPassword] = useState('');
+  const [vNewPassword, setVNewPassword] = useState('');
+  const [vConfirmNewPassword, setVConfirmNewPassword] = useState('');
+  const [vPasswordChangeError, setVPasswordChangeError] = useState('');
+
+  // User Management State (SA only)
+  const [usersList, setUsersList] = useState([]);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [manageUserId, setManageUserId] = useState('');
+  const [manageName, setManageName] = useState('');
+  const [manageMobileNo, setManageMobileNo] = useState('');
+  const [manageOffice, setManageOffice] = useState('');
+  const [manageType, setManageType] = useState('View');
+  const [isEditingUser, setIsEditingUser] = useState(false);
+  const [userManagementError, setUserManagementError] = useState('');
+  const [manageOffices, setManageOffices] = useState([]);
+  const [manageRights, setManageRights] = useState([]);
+  const [officeSearchQuery, setOfficeSearchQuery] = useState('');
+
+  // Database Synchronization State (SA only)
+  const [syncTable, setSyncTable] = useState('Budget'); // 'Budget' or 'e-Lekha'
+  const [syncFile, setSyncFile] = useState(null);
+  const [syncHeaders, setSyncHeaders] = useState([]);
+  const [parsedRows, setParsedRows] = useState([]);
+  const [columnMapping, setColumnMapping] = useState({});
+  const [syncMode, setSyncMode] = useState('append'); // 'append' or 'replace'
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState('');
+  const [syncError, setSyncError] = useState('');
+  const [syncSuccess, setSyncSuccess] = useState(false);
+  const [fileInputKey, setFileInputKey] = useState(Date.now());
+  const [syncReportDate, setSyncReportDate] = useState(() => {
+    const d = new Date();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${month}-${day}`;
+  });
+  const [reportMetadata, setReportMetadata] = useState([]);
+
+  // Parsed Datasets
   const [elekhaData, setElekhaData] = useState([]);
-  const [officeMappingData, setOfficeMappingData] = useState([]);
-  const [revenueHoaData, setRevenueHoaData] = useState([]);
-  const [revenueDdoMappingData, setRevenueDdoMappingData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [budgetData, setBudgetData] = useState([]);
+  const [hoaList, setHoaList] = useState([]);
+  const [officeMapping, setOfficeMapping] = useState([]);
+  const [ddoMappingList, setDdoMappingList] = useState([]);
 
-  // Theme state
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  // Filter Dropdowns Lists
+  const [uniqueMonths, setUniqueMonths] = useState([]);
+  const [uniqueRegions, setUniqueRegions] = useState([]);
 
-  // Pagination state for Budget
-  const [budgetPage, setBudgetPage] = useState(1);
-  const [budgetRowsPerPage, setBudgetRowsPerPage] = useState(15);
+  // Month selected for standard views (April 2026, May 2026, etc.)
+  const [selectedMonth, setSelectedMonth] = useState('All');
 
-  // Pagination state for e-Lekha
-  const [elekhaPage, setElekhaPage] = useState(1);
-  const [elekhaRowsPerPage, setElekhaRowsPerPage] = useState(15);
+  // e-Lekha Tab Filters & Pagination
+  const [elekhaSearch, setElekhaSearch] = useState('');
+  const [filterRegion, setFilterRegion] = useState('All');
+  const [filterDdoCode, setFilterDdoCode] = useState('');
+  const [filterHoa, setFilterHoa] = useState('');
+  const [elekhaPage, setElekhaPage] = useState(0);
+  const [elekhaRowsPerPage, setElekhaRowsPerPage] = useState(25);
 
-  // Filters for Budget Dashboard
-  const [budgetRegionFilter, setBudgetRegionFilter] = useState('ALL');
-  const [budgetHoaFilter, setBudgetHoaFilter] = useState('ALL');
-  const [budgetSearchTerm, setBudgetSearchTerm] = useState('');
+  // Budget Tab Filters & Pagination
+  const [budgetSearch, setBudgetSearch] = useState('');
+  const [budgetRegion, setBudgetRegion] = useState('All');
+  const [budgetFilterStatus, setBudgetFilterStatus] = useState('All'); // 'All', 'Over', 'Warning', 'Safe'
+  const [budgetPage, setBudgetPage] = useState(0);
+  const [budgetRowsPerPage, setBudgetRowsPerPage] = useState(25);
 
-  // Filters for e-Lekha Dashboard
-  const [elekhaRegionFilter, setElekhaRegionFilter] = useState('ALL');
-  const [elekhaDdoFilter, setElekhaDdoFilter] = useState('ALL');
-  const [elekhaHoaFilter, setElekhaHoaFilter] = useState('ALL');
-  const [elekhaSearchTerm, setElekhaSearchTerm] = useState('');
-
-  // Setup / Config State for Vertical Revenue Report
-  const [comparisonType, setComparisonType] = useState('Month'); // 'Month' or 'DateRange'
+  // Vertical Revenue Report Controls
+  const [revenueType, setRevenueType] = useState('Month'); // 'Month' / 'Day'
+  const [p1From, setP1From] = useState('');
+  const [p1To, setP1To] = useState('');
+  const [p2From, setP2From] = useState('');
+  const [p2To, setP2To] = useState('');
   
-  // Month-based selections
-  const [p1FromMonth, setP1FromMonth] = useState('2025-04');
-  const [p1ToMonth, setP1ToMonth] = useState('2025-09');
-  const [p2FromMonth, setP2FromMonth] = useState('2025-10');
-  const [p2ToMonth, setP2ToMonth] = useState('2026-03');
+  // Custom Date range filters (when Day type is active)
+  const [p1FromDate, setP1FromDate] = useState('2026-04-01');
+  const [p1ToDate, setP1ToDate] = useState('2026-04-30');
+  const [p2FromDate, setP2FromDate] = useState('2026-04-01');
+  const [p2ToDate, setP2ToDate] = useState('2026-05-31');
 
-  // Custom date-based selections
-  const [p1FromDate, setP1FromDate] = useState('2025-04-01');
-  const [p1ToDate, setP1ToDate] = useState('2025-09-30');
-  const [p2FromDate, setP2FromDate] = useState('2025-10-01');
-  const [p2ToDate, setP2ToDate] = useState('2026-03-31');
-
-  // Vertical Revenue filters
-  const [selectedRegion, setSelectedRegion] = useState('ALL');
-  const [selectedUnits, setSelectedUnits] = useState([]); // Empty array = ALL
-  const [reportType, setReportType] = useState('Detail'); // 'Detail' or 'Summary'
-
-  // Generated state to lock configuration when "Generate Report" is clicked
+  const [reportType, setReportType] = useState('Detail'); // 'Detail' / 'Summary'
+  const [groupBy, setGroupBy] = useState('ho'); // 'ho' / 'division' / 'region'
   const [generatedConfig, setGeneratedConfig] = useState(null);
 
-  // Fetch initial data from public CSVs or local storage fallback
+  // Expanded Budget rows
+  const [expandedBudgetRows, setExpandedBudgetRows] = useState({});
+
+  // Column header dropdown checklist filters
+  const [budgetColumnFilters, setBudgetColumnFilters] = useState({});
+  const [elekhaColumnFilters, setElekhaColumnFilters] = useState({});
+  const [revenueColumnFilters, setRevenueColumnFilters] = useState({});
+
+  // Search by percentage consumed
+  const [pctSearchVal, setPctSearchVal] = useState('');
+  const [pctSearchType, setPctSearchType] = useState('apt'); // 'apt' / 'elekha'
+
+  // Analysis Mode State
+  const [isAnalysisMode, setIsAnalysisMode] = useState(false);
+  const [selectedAnalysisType, setSelectedAnalysisType] = useState('all'); // 'all', 'over', 'under', 'no_allotment'
+
+  // Chart Mode State for Budget
+  const [isChartMode, setIsChartMode] = useState(false);
+  const [selectedChartType, setSelectedChartType] = useState('pie'); // 'pie', 'bar', 'line'
+  const [selectedChartGroupBy, setSelectedChartGroupBy] = useState('region'); // 'region', 'status', 'hoa'
+  const [selectedChartMetric, setSelectedChartMetric] = useState('consumed'); // 'consumed', 'alloted', 'elekha'
+
+  // Chart Mode State for Vertical Revenue
+  const [isRevenueChartMode, setIsRevenueChartMode] = useState(false);
+  const [selectedRevenueChartType, setSelectedRevenueChartType] = useState('bar'); // 'bar', 'line', 'pie'
+
+  const [budgetPageInput, setBudgetPageInput] = useState('1');
+  const [elekhaPageInput, setElekhaPageInput] = useState('1');
+
+  useEffect(() => {
+    setBudgetPageInput(String(budgetPage + 1));
+  }, [budgetPage]);
+
+  useEffect(() => {
+    setElekhaPageInput(String(elekhaPage + 1));
+  }, [elekhaPage]);
+
+  // Theme Effect
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  // Load and Parse from Supabase Database
   useEffect(() => {
     async function loadData() {
       try {
         setIsLoading(true);
-        const [bRes, eRes, oRes, rhRes, rdRes] = await Promise.all([
-          fetch('/budget report.csv').then(r => r.text()),
-          fetch('/e-Lekha.csv').then(r => r.text()),
-          fetch('/Office_Mapping.csv').then(r => r.text()),
-          fetch('/Revenue_HOA.csv').then(r => r.text()),
-          fetch('/revenue ddo mapping.csv').then(r => r.text())
+        setError(null);
+
+        // Helper to fetch all rows from a table using parallel chunked pagination
+        async function fetchTableRows(tableName) {
+          const limit = 1000;
+          const { count, error: countError } = await supabase
+            .from(tableName)
+            .select('*', { count: 'exact', head: true });
+            
+          if (countError) throw countError;
+          const totalRows = count || 0;
+          
+          const pages = Math.ceil(totalRows / limit);
+          const promises = [];
+          
+          for (let i = 0; i < pages; i++) {
+            const from = i * limit;
+            const to = from + limit - 1;
+            promises.push(
+              supabase
+                .from(tableName)
+                .select('*')
+                .range(from, to)
+                .then(({ data, error }) => {
+                  if (error) throw error;
+                  return data;
+                })
+            );
+          }
+          
+          const results = [];
+          const batchSize = 15;
+          for (let i = 0; i < promises.length; i += batchSize) {
+            const batch = promises.slice(i, i + batchSize);
+            const batchResults = await Promise.all(batch);
+            results.push(...batchResults.flat());
+          }
+          return results;
+        }
+
+        // Helper to convert DB objects/values to trimmed strings to preserve codebase compatibility
+        function convertDbRowsToStrings(rows) {
+          return rows.map(row => {
+            const obj = {};
+            for (const [key, value] of Object.entries(row)) {
+              if (value === null || value === undefined) {
+                obj[key] = '';
+              } else {
+                obj[key] = String(value).trim();
+              }
+            }
+            return obj;
+          });
+        }
+        
+        // Fetch all tables from Supabase in parallel
+        const [rawHoaList, rawMapping, rawDdoMapping, rawElekha, rawBudget, rawMetadata] = await Promise.all([
+          fetchTableRows('Revenue_hoa'),
+          fetchTableRows('office_mapping'),
+          fetchTableRows('Revenue DDO Mapping'),
+          fetchTableRows('e-Lekha'),
+          fetchTableRows('Budget'),
+          fetchTableRows('report_metadata').catch(err => {
+            console.warn('report_metadata table not found or failed to load:', err);
+            return [];
+          })
         ]);
 
-        const parsedBudget = csvToObjects(bRes);
-        const parsedElekha = csvToObjects(eRes);
-        const parsedMapping = csvToObjects(oRes);
-        const parsedRevenueHoa = csvToObjects(rhRes);
-        const parsedRevenueDdo = csvToObjects(rdRes);
+        const hoas = convertDbRowsToStrings(rawHoaList);
+        const mapping = convertDbRowsToStrings(rawMapping);
+        const ddoMap = convertDbRowsToStrings(rawDdoMapping);
+        const elekhaRaw = convertDbRowsToStrings(rawElekha);
+        const budgetRaw = convertDbRowsToStrings(rawBudget);
+        const metadata = convertDbRowsToStrings(rawMetadata);
 
-        setBudgetData(parsedBudget);
-        setElekhaData(parsedElekha);
-        setOfficeMappingData(parsedMapping);
-        setRevenueHoaData(parsedRevenueHoa);
-        setRevenueDdoMappingData(parsedRevenueDdo);
+        // Build mapping maps
+        const officeIdToNameMap = {};
+        const officeIdToRegionMap = {};
+        mapping.forEach(m => {
+          const id = m['Office ID'];
+          const name = m['Office Name'];
+          const reg = m['Region'];
+          if (id) {
+            officeIdToNameMap[id] = name;
+            officeIdToRegionMap[id] = reg;
+          }
+        });
+
+        // Build description-to-HOA map from Revenue_hoa (do not overwrite with generic e-Lekha codes!)
+        const descToHoaMap = {};
+        hoas.forEach(item => {
+          const code = item['HOA Code'];
+          const desc = item['Description']?.toLowerCase();
+          if (code && desc) {
+            descToHoaMap[desc] = code;
+          }
+        });
+
+        // Map e-Lekha generic HOA codes to detailed HOA Codes using Description
+        const elekhaToRevenueHoaMap = {
+          '48 speed post doc_ddd': '120100101020100',
+          'atm annual maintenance charge account': '120100200260000',
+          'aadhaar new aadhar enrollment': '120100200230100',
+          'aadhaar other biometric/demography updation': '120100200220100',
+          'commission for popsk transactions': '120100200190000',
+          'commission on indian postal orders': '120100102030000',
+          'commission on inland money orders': '120100102100000',
+          'commission on railway prss': '120100108000000',
+          'commission on revenue/non postal stamps': '120100200120000',
+          'custom duty on outward international mails': '120101000000000',
+          'e-payment service charges- education': '120100800040100',
+          'e-payment service charges- finance': '120100800040100',
+          'fees for communication of marks to candidates': '120100800180100',
+          'fees from contractors': '120100800340000',
+          'media post': '120100800110000',
+          'neft/rtgs charges from customer': '120100200250000',
+          'posb_cheque book issuance fee': '120100200030000',
+          'prc -international express airmail service': '120100101250100',
+          'prc -international tracked packet service': '120100101280100',
+          'prc e-post services.': '120100101120100',
+          'prc- india post parcel-retail': '120100101220100',
+          'prc- international air parcel': '120100101260100',
+          'prc- joint parcel product(railways)': '120100101220100',
+          'prc- magazine post': '120100101330000',
+          'prc-business post': '120100101030100',
+          'prc-india post parcel -contractual': '120100101220100',
+          'prc-international letters (registered)': '120100101270100',
+          'prc-registered letter/article': '120100101310100',
+          'prc-remotely managed franking machine': '120100101230100',
+          'prc-speed post parcel': '120100101290100',
+          'post boxes & bags': '120100200050000',
+          'postage realized in cash for ordinary services': '120100101010100',
+          'rent & taxes': '120100200060100',
+          'retail post': '120100800010100',
+          'revenue - logistics post (surface)': '120100800130100',
+          'revenue on account of pmjjby': '120100800570100',
+          'sale of philatelystamps through bureaux/pos/exhibi': '120100101160300',
+          'sale of postage stamps': '120100101100100',
+          'sale of publications & blank form etc.': '120100800190100',
+          'sale of service stamps': '120100101110100',
+          'sale of special stamps & other materials': '120100800370100',
+          'sale of waste paper dead stock etc': '120100800340000',
+          'direct post': '120100101060000',
+          'bill mail service': '120100101090000',
+          'deduct refunds': '120100800440000',
+          'examination fee etc.': '120100800180100',
+          'joint parcel product(railways)': '120100101220100',
+          'logistics post': '120100800130100',
+          'registered parcel': '120100101300100',
+          'speed post': '120100101020100',
+          'speed post parcel': '120100101290100',
+          'business post': '120100101030100',
+          'magazine post': '120100101330000'
+        };
+
+        const pliRpliDetails = hoas.filter(item => 
+          ['PLI', 'PLI Direct Cost', 'RPLI', 'RPLI Direct Cost'].includes(item.Category)
+        ).map(item => item['HOA Code']?.trim());
+
+        const elekha = elekhaRaw.map(row => {
+          const originalHoa = String(row.HOA || '').trim();
+          let mappedHoa = originalHoa;
+          
+          // Match any e-Lekha HOA starting with PLI/RPLI detailed codes
+          const matchedDetailCode = pliRpliDetails.find(code => originalHoa.startsWith(code));
+          if (matchedDetailCode) {
+            mappedHoa = matchedDetailCode;
+          }
+          
+          return {
+            ...row,
+            HOA: originalHoa,
+            MappedHOA: mappedHoa
+          };
+        });
+
+        // Process Budget data with standard naming & HOA resolution
+        const budget = budgetRaw.map(row => {
+          const officeId = row['Office ID'];
+          const officeName = officeIdToNameMap[officeId] || row['Office Name'] || '';
+          
+          let region = officeIdToRegionMap[officeId] || row['Region'] || '';
+          if (!region && officeName.toLowerCase().includes('navsari')) {
+            region = 'SGR';
+          }
+
+          let hoa = row['HOA'];
+          if (hoa.includes('E') || hoa.includes('e')) {
+            const descLower = row['HOA Description']?.toLowerCase();
+            if (descToHoaMap[descLower]) {
+              hoa = descToHoaMap[descLower];
+            }
+          }
+
+          return {
+            'Office ID': officeId,
+            'Name of Unit (HO/Division)': officeName,
+            'Region': region,
+            'HOA': hoa,
+            'Description': row['HOA Description'] || '',
+            'APT Alloted': String(
+              parseNumber(row['Allotted Budget (A)']) +
+              parseNumber(row['Reallotted Budget (B)']) -
+              parseNumber(row['Distributed Budget (C)']) -
+              parseNumber(row['Transferred Budget (D)']) +
+              parseNumber(row['Re-Appropritaion Receipt (E)']) -
+              parseNumber(row['Re-Appropritaion Transferred (F)']) +
+              parseNumber(row['Reserved Budget (G)'])
+            ),
+            'APT Consumed': row['Consumed Budget (H)'] || '0'
+          };
+        });
+
+        setHoaList(hoas);
+        setOfficeMapping(mapping);
+        setBudgetData(budget);
+        setElekhaData(elekha);
+        setDdoMappingList(ddoMap);
+        setReportMetadata(metadata);
+
+        // Extract dropdown configuration details
+        const sortedMonths = getSortedUniqueMonths(elekha);
+        setUniqueMonths(sortedMonths);
+        
+        // Aggregate all unique region names from Office_Mapping, budget, and e-Lekha
+        const regionsSet = new Set();
+        mapping.forEach(m => { if (m.Region) regionsSet.add(m.Region.trim()); });
+        budget.forEach(b => { if (b.Region) regionsSet.add(b.Region.trim()); });
+        elekha.forEach(e => { if (e.Region) regionsSet.add(e.Region.trim()); });
+        ddoMap.forEach(d => { if (d.Region) regionsSet.add(d.Region.trim()); });
+        
+        setUniqueRegions(Array.from(regionsSet).sort());
+
+        // Default month for standard filters
+        if (sortedMonths.length > 0) {
+          const latestMonth = sortedMonths[sortedMonths.length - 1];
+          setSelectedMonth('All'); // Show all data by default
+          setElekhaColumnFilters({}); // No initial month filter (shows all data)
+          
+          // Default Period settings for Vertical Revenue
+          setP1From(sortedMonths[0]);
+          setP1To(sortedMonths[0]);
+          setP2From(sortedMonths[0]);
+          setP2To(sortedMonths[sortedMonths.length - 1]);
+
+          // Set default generated config
+          setGeneratedConfig({
+            type: 'Month',
+            p1From: sortedMonths[0],
+            p1To: sortedMonths[0],
+            p2From: sortedMonths[0],
+            p2To: sortedMonths[sortedMonths.length - 1],
+            p1FromDate: '2026-04-01',
+            p1ToDate: '2026-04-30',
+            p2FromDate: '2026-04-01',
+            p2ToDate: '2026-05-31',
+            reportType: 'Detail',
+            groupBy: 'ho'
+          });
+        }
+
+        setIsLoading(false);
       } catch (err) {
-        console.error('Error loading CSV datasets:', err);
-      } finally {
+        console.error("Error loading Supabase database data:", err);
+        setError("Error: Failed to retrieve data from Supabase database. Make sure your database tables are populated and credentials are set correctly.");
         setIsLoading(false);
       }
     }
     loadData();
   }, []);
 
-  // Set Theme
-  useEffect(() => {
-    if (isDarkMode) {
-      document.body.classList.remove('light-mode');
-    } else {
-      document.body.classList.add('light-mode');
+  const fetchUsers = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      setUsersList(data || []);
+    } catch (err) {
+      console.error('Error fetching users:', err);
     }
-  }, [isDarkMode]);
-
-  // Auth Initialization & User list loading from Supabase
-  useEffect(() => {
-    async function initAuth() {
-      try {
-        setIsAuthLoading(true);
-        // Check local storage for active session
-        const storedUser = localStorage.getItem('cebar_user');
-        if (storedUser) {
-          setCurrentUser(JSON.parse(storedUser));
-        }
-
-        // Fetch users list from Supabase
-        const { data, error } = await supabase.from('users').select('*');
-        if (!error && data) {
-          setUsersList(data);
-        }
-      } catch (err) {
-        console.error('Auth initialization error:', err);
-      } finally {
-        setIsAuthLoading(false);
-      }
-    }
-    initAuth();
   }, []);
 
-  // Handle Login
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoginError('');
-
-    if (!loginUsername || !loginPassword) {
-      setLoginError('Please enter both username and password.');
-      return;
+  useEffect(() => {
+    if (isLoggedIn && currentUser && currentUser.type === 'SA') {
+      fetchUsers();
     }
+  }, [isLoggedIn, currentUser, fetchUsers]);
 
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('username', loginUsername.trim())
-        .single();
-
-      if (error || !data) {
-        setLoginError('Invalid username or password.');
-        return;
+  // Build index lookup map for DDO Codes
+  const ddoLookupMap = useMemo(() => {
+    const map = {};
+    ddoMappingList.forEach(item => {
+      const code = String(item['DDO Code'] || '').trim();
+      if (code) {
+        map[code] = {
+          ho: item.HO,
+          division: item.Division,
+          region: item.Region
+        };
       }
-
-      if (data.password !== loginPassword.trim()) {
-        setLoginError('Invalid username or password.');
-        return;
-      }
-
-      const userSession = { username: data.username, role: data.role };
-      setCurrentUser(userSession);
-      localStorage.setItem('cebar_user', JSON.stringify(userSession));
-      setLoginUsername('');
-      setLoginPassword('');
-    } catch (err) {
-      console.error('Login error:', err);
-      setLoginError('An error occurred during login. Please try again.');
-    }
-  };
-
-  // Handle Logout
-  const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('cebar_user');
-  };
-
-  // Handle Add User (Admin only)
-  const handleAddUser = async (e) => {
-    e.preventDefault();
-    setUserManagementError('');
-    setUserManagementSuccess('');
-
-    if (!newUsername || !newPassword) {
-      setUserManagementError('Please enter username and password.');
-      return;
-    }
-
-    try {
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('username')
-        .eq('username', newUsername.trim())
-        .single();
-
-      if (existingUser) {
-        setUserManagementError('Username already exists.');
-        return;
-      }
-
-      const { error } = await supabase.from('users').insert([
-        { username: newUsername.trim(), password: newPassword.trim(), role: newRole }
-      ]);
-
-      if (error) {
-        setUserManagementError('Failed to add user: ' + error.message);
-        return;
-      }
-
-      setUserManagementSuccess(`User "${newUsername.trim()}" added successfully!`);
-      setNewUsername('');
-      setNewPassword('');
-      setNewRole('user');
-      
-      // Refresh user list
-      const { data } = await supabase.from('users').select('*');
-      if (data) setUsersList(data);
-    } catch (err) {
-      setUserManagementError('An error occurred while adding user.');
-    }
-  };
-
-  // Handle Delete User (Admin only)
-  const handleDeleteUser = async (usernameToDelete) => {
-    if (usernameToDelete === currentUser?.username) {
-      alert('You cannot delete your own logged in account.');
-      return;
-    }
-
-    if (!window.confirm(`Are you sure you want to delete user "${usernameToDelete}"?`)) {
-      return;
-    }
-
-    try {
-      const { error } = await supabase.from('users').delete().eq('username', usernameToDelete);
-      if (error) {
-        alert('Failed to delete user: ' + error.message);
-        return;
-      }
-      setUsersList(prev => prev.filter(u => u.username !== usernameToDelete));
-    } catch (err) {
-      alert('Error deleting user.');
-    }
-  };
-
-  // Handle Change Password
-  const handleChangePassword = async (e) => {
-    e.preventDefault();
-    setPasswordChangeError('');
-    setPasswordChangeSuccess('');
-
-    if (!currentPassword || !newPasswordChange || !confirmPasswordChange) {
-      setPasswordChangeError('All fields are required.');
-      return;
-    }
-
-    if (newPasswordChange !== confirmPasswordChange) {
-      setPasswordChangeError('New passwords do not match.');
-      return;
-    }
-
-    try {
-      // Verify current password
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('username', currentUser.username)
-        .single();
-
-      if (error || !data || data.password !== currentPassword) {
-        setPasswordChangeError('Current password is incorrect.');
-        return;
-      }
-
-      // Update password
-      const { error: updateErr } = await supabase
-        .from('users')
-        .update({ password: newPasswordChange })
-        .eq('username', currentUser.username);
-
-      if (updateErr) {
-        setPasswordChangeError('Failed to update password: ' + updateErr.message);
-        return;
-      }
-
-      setPasswordChangeSuccess('Password updated successfully!');
-      setCurrentPassword('');
-      setNewPasswordChange('');
-      setConfirmPasswordChange('');
-    } catch (err) {
-      setPasswordChangeError('Error changing password.');
-    }
-  };
-
-  // -------------------------------------------------------------
-  // Filter Options lists
-  // -------------------------------------------------------------
-  const budgetRegions = useMemo(() => {
-    const set = new Set();
-    budgetData.forEach(item => {
-      if (item.Region) set.add(item.Region);
     });
-    return Array.from(set).sort();
-  }, [budgetData]);
+    return map;
+  }, [ddoMappingList]);
 
-  const budgetHoas = useMemo(() => {
-    const set = new Set();
-    budgetData.forEach(item => {
-      if (item.HOA) set.add(item.HOA);
-    });
-    return Array.from(set).sort();
-  }, [budgetData]);
-
-  const elekhaRegions = useMemo(() => {
-    const set = new Set();
-    elekhaData.forEach(item => {
-      if (item.Region) set.add(item.Region);
-    });
-    return Array.from(set).sort();
-  }, [elekhaData]);
-
-  const elekhaDdos = useMemo(() => {
-    const set = new Set();
-    elekhaData.forEach(item => {
-      if (item['DDO Code']) set.add(item['DDO Code']);
-    });
-    return Array.from(set).sort();
-  }, [elekhaData]);
-
-  const elekhaHoas = useMemo(() => {
-    const set = new Set();
-    elekhaData.forEach(item => {
-      if (item.HOA) set.add(item.HOA);
-    });
-    return Array.from(set).sort();
-  }, [elekhaData]);
-
-  // Available regions for Vertical report
-  const verticalRegions = useMemo(() => {
-    const set = new Set();
-    revenueDdoMappingData.forEach(item => {
-      if (item.Region) set.add(item.Region);
-    });
-    return Array.from(set).sort();
-  }, [revenueDdoMappingData]);
-
-  // Available units based on selectedRegion
-  const availableUnitsForRegion = useMemo(() => {
-    const filtered = selectedRegion === 'ALL'
-      ? revenueDdoMappingData
-      : revenueDdoMappingData.filter(d => d.Region === selectedRegion);
-
-    const set = new Set();
-    filtered.forEach(d => {
-      if (d.HO) set.add(d.HO);
-    });
-    return Array.from(set).sort();
-  }, [revenueDdoMappingData, selectedRegion]);
-
-  // Filtered Budget Data
-  const filteredBudgetData = useMemo(() => {
-    return budgetData.filter(row => {
-      if (budgetRegionFilter !== 'ALL' && row.Region !== budgetRegionFilter) return false;
-      if (budgetHoaFilter !== 'ALL' && row.HOA !== budgetHoaFilter) return false;
-      if (budgetSearchTerm.trim() !== '') {
-        const query = budgetSearchTerm.toLowerCase();
-        const officeId = String(row['Office ID'] || '').toLowerCase();
-        const unitName = String(row['Name of Unit (HO/Division)'] || '').toLowerCase();
-        const desc = String(row['Description'] || '').toLowerCase();
-        const hoa = String(row['HOA'] || '').toLowerCase();
-        if (!officeId.includes(query) && !unitName.includes(query) && !desc.includes(query) && !hoa.includes(query)) {
-          return false;
-        }
+  // Helper lookup maps and helpers for allowed offices and rights
+  const officeNameToIdMap = useMemo(() => {
+    const map = {};
+    officeMapping.forEach(m => {
+      const name = String(m['Office Name'] || '').trim().toLowerCase();
+      const id = String(m['Office ID'] || '').trim();
+      if (name && id) {
+        map[name] = id;
       }
+    });
+    return map;
+  }, [officeMapping]);
+
+  const isOfficeAllowed = useCallback((officeId, officeName) => {
+    if (!currentUser) return false;
+    if (!currentUser.offices || currentUser.offices.length === 0) {
       return true;
-    });
-  }, [budgetData, budgetRegionFilter, budgetHoaFilter, budgetSearchTerm]);
+    }
+    if (officeId && currentUser.offices.includes(String(officeId))) {
+      return true;
+    }
+    if (officeName) {
+      const mappedId = officeNameToIdMap[String(officeName).trim().toLowerCase()];
+      if (mappedId && currentUser.offices.includes(String(mappedId))) {
+        return true;
+      }
+    }
+    return false;
+  }, [currentUser, officeNameToIdMap]);
 
-  // Paginated Budget Data
-  const paginatedBudgetData = useMemo(() => {
-    const startIndex = (budgetPage - 1) * budgetRowsPerPage;
-    return filteredBudgetData.slice(startIndex, startIndex + budgetRowsPerPage);
-  }, [filteredBudgetData, budgetPage, budgetRowsPerPage]);
+  const getOfficeIdForElekhaRow = useCallback((row) => {
+    const rawDdoCode = String(row['DDO Code'] || '').trim();
+    const cleanDdoCode = rawDdoCode.split('.')[0];
+    const mapped = ddoLookupMap[cleanDdoCode];
+    const hoName = mapped ? mapped.ho : row.HO;
+    if (!hoName) return null;
+    return officeNameToIdMap[hoName.trim().toLowerCase()] || null;
+  }, [ddoLookupMap, officeNameToIdMap]);
 
-  const totalBudgetPages = Math.ceil(filteredBudgetData.length / budgetRowsPerPage) || 1;
+  const hasRight = useCallback((tabKey) => {
+    if (!currentUser) return false;
+    if ((tabKey === 'users' || tabKey === 'sync') && currentUser.type !== 'SA') {
+      return false;
+    }
+    if (!currentUser.rights || currentUser.rights.length === 0) {
+      return true;
+    }
+    return currentUser.rights.includes(tabKey);
+  }, [currentUser]);
 
-  // Filtered e-Lekha Data
-  const filteredElekhaData = useMemo(() => {
+  useEffect(() => {
+    if (isLoggedIn && currentUser) {
+      const allowedTabs = ['budget', 'elekha', 'revenue', 'users', 'sync'].filter(tab => hasRight(tab));
+      if (allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
+        setActiveTab(allowedTabs[0]);
+      }
+    }
+  }, [isLoggedIn, currentUser, activeTab, hasRight]);
+
+  // Build lookup index map for e-Lekha Transactions
+  const elekhaLookupMap = useMemo(() => {
+    const map = {};
+    const len = elekhaData.length;
+    for (let i = 0; i < len; i++) {
+      const row = elekhaData[i];
+      const hoa = String(row.HOA || '').trim();
+      if (!hoa) continue;
+
+      const ho = String(row.HO || '').trim().toLowerCase();
+      const payVal = parseNumber(row['Payment (Rs.)']) + parseNumber(row['Receipt (Rs.)']);
+
+      if (ho) {
+        const key = `${ho}_${hoa}`;
+        if (!map[key]) {
+          map[key] = { total: 0, txns: [] };
+        }
+        map[key].total += payVal;
+        map[key].txns.push(row);
+      }
+    }
+    return map;
+  }, [elekhaData]);
+
+  // Helper for cascading filters on e-Lekha
+  const getFilteredElekhaDataForColumn = (excludeColumnName) => {
     return elekhaData.filter(row => {
-      if (elekhaRegionFilter !== 'ALL' && row.Region !== elekhaRegionFilter) return false;
-      if (elekhaDdoFilter !== 'ALL' && row['DDO Code'] !== elekhaDdoFilter) return false;
-      if (elekhaHoaFilter !== 'ALL' && row.HOA !== elekhaHoaFilter) return false;
-      if (elekhaSearchTerm.trim() !== '') {
-        const query = elekhaSearchTerm.toLowerCase();
-        const teNo = String(row['TE Number'] || '').toLowerCase();
-        const ddo = String(row['DDO Code'] || '').toLowerCase();
-        const ho = String(row['HO'] || '').toLowerCase();
-        const desc = String(row['Description'] || '').toLowerCase();
-        const hoa = String(row['HOA'] || '').toLowerCase();
-        const remark = String(row['Remark'] || '').toLowerCase();
-        if (!teNo.includes(query) && !ddo.includes(query) && !ho.includes(query) && !desc.includes(query) && !hoa.includes(query) && !remark.includes(query)) {
+      // 0. Allowed Office check
+      if (currentUser && currentUser.offices && currentUser.offices.length > 0) {
+        const rowOfficeId = getOfficeIdForElekhaRow(row);
+        if (!isOfficeAllowed(rowOfficeId, row.HO)) {
           return false;
         }
       }
+
+      // 1. Column filters (checks for selected values, excluding the active column)
+      for (const [colName, selectedSet] of Object.entries(elekhaColumnFilters)) {
+        if (colName === excludeColumnName) continue;
+        if (selectedSet && selectedSet.size > 0) {
+          const val = (row[colName] === undefined || row[colName] === null) ? '' : String(row[colName]).trim();
+          if (!selectedSet.has(val)) {
+            return false;
+          }
+        }
+      }
+
+      // 2. Region Filter
+      if (filterRegion !== 'All' && row.Region !== filterRegion) {
+        return false;
+      }
+      // 3. DDO Code Filter
+      if (filterDdoCode.trim() !== '') {
+        if (String(row['DDO Code']).trim() !== filterDdoCode.trim()) return false;
+      }
+      // 4. HOA Filter
+      if (filterHoa.trim() !== '') {
+        if (!String(row.HOA).includes(filterHoa.trim())) return false;
+      }
+      // 5. Global Search
+      if (elekhaSearch.trim() !== '') {
+        const search = elekhaSearch.toLowerCase();
+        const regMatch = String(row.Region || '').toLowerCase().includes(search);
+        const ddoMatch = String(row['DDO Code'] || '').toLowerCase().includes(search);
+        const hoMatch = String(row.HO || '').toLowerCase().includes(search);
+        const divMatch = String(row.Division || '').toLowerCase().includes(search);
+        const hoaMatch = String(row.HOA || '').toLowerCase().includes(search);
+        const descMatch = String(row.Description || '').toLowerCase().includes(search);
+        const teMatch = String(row['TE Number'] || '').toLowerCase().includes(search);
+        if (!regMatch && !ddoMatch && !hoMatch && !divMatch && !hoaMatch && !descMatch && !teMatch) return false;
+      }
       return true;
     });
-  }, [elekhaData, elekhaRegionFilter, elekhaDdoFilter, elekhaHoaFilter, elekhaSearchTerm]);
+  };
 
-  // Paginated e-Lekha Data
+  // e-Lekha filtered data (computed locally in React)
+  const filteredElekhaData = useMemo(() => {
+    return getFilteredElekhaDataForColumn('');
+  }, [elekhaData, filterRegion, filterDdoCode, filterHoa, elekhaSearch, elekhaColumnFilters]);
+
+  // e-Lekha Paginated Data
   const paginatedElekhaData = useMemo(() => {
-    const startIndex = (elekhaPage - 1) * elekhaRowsPerPage;
-    return filteredElekhaData.slice(startIndex, startIndex + elekhaRowsPerPage);
+    const start = elekhaPage * elekhaRowsPerPage;
+    return filteredElekhaData.slice(start, start + elekhaRowsPerPage);
   }, [filteredElekhaData, elekhaPage, elekhaRowsPerPage]);
 
-  const totalElekhaPages = Math.ceil(filteredElekhaData.length / elekhaRowsPerPage) || 1;
+  // Budget filtered data (computed locally in React)
+  // Mapped Budget Data containing calculated fields and virtual rows (pre-filter)
+  const mappedBudgetData = useMemo(() => {
+    // 1. Map existing budget rows
+    const existingMappedRows = budgetData.map(row => {
+      const unitName = String(row['Name of Unit (HO/Division)'] || '').trim();
+      const hoa = String(row['HOA'] || '').trim();
+      const key = `${unitName.toLowerCase()}_${hoa.toLowerCase()}`;
+      const lookup = elekhaLookupMap[key];
+      const eLekhaConsumedVal = lookup ? lookup.total : 0;
+      
+      const aptAllotedVal = parseNumber(row['APT Alloted']);
+      const aptConsumedVal = parseNumber(row['APT Consumed']);
+      
+      const diffVal = aptConsumedVal - eLekhaConsumedVal;
+      const aptPctVal = aptAllotedVal > 0 ? (aptConsumedVal / aptAllotedVal) * 100 : 0;
+      const elekhaPctVal = aptAllotedVal > 0 ? (eLekhaConsumedVal / aptAllotedVal) * 100 : 0;
 
-  // Summary Metrics for Budget
-  const budgetMetrics = useMemo(() => {
-    let totalAlloted = 0;
-    let totalAptConsumed = 0;
-    let totalElekhaConsumed = 0;
-
-    filteredBudgetData.forEach(row => {
-      totalAlloted += parseNumber(row['APT Alloted']);
-      totalAptConsumed += parseNumber(row['APT Consumed']);
-      totalElekhaConsumed += parseNumber(row['e-lekha Consumed']);
+      return {
+        ...row,
+        'APT Alloted': aptAllotedVal,
+        'APT Consumed': aptConsumedVal,
+        'e-lekha Consumed': eLekhaConsumedVal,
+        'Diff. (APT - e-Lekha)': diffVal,
+        'APT Consumed %': aptPctVal,
+        'e-Lekha Consumed %': elekhaPctVal
+      };
     });
 
-    const diff = totalAptConsumed - totalElekhaConsumed;
-    const aptConsumedPct = totalAlloted > 0 ? (totalAptConsumed / totalAlloted) * 100 : 0;
-    const elekhaConsumedPct = totalAlloted > 0 ? (totalElekhaConsumed / totalAlloted) * 100 : 0;
+    // 2. Build map of existing keys
+    const existingBudgetKeys = new Set(
+      budgetData.map(row => `${String(row['Name of Unit (HO/Division)'] || '').trim().toLowerCase()}_${String(row['HOA'] || '').trim().toLowerCase()}`)
+    );
+
+    // 3. Find unique unit lookup info for Office ID and Region
+    const unitToInfoMap = {};
+    budgetData.forEach(row => {
+      const uName = String(row['Name of Unit (HO/Division)'] || '').trim().toLowerCase();
+      if (uName && !unitToInfoMap[uName]) {
+        unitToInfoMap[uName] = {
+          officeId: row['Office ID'] || '',
+          region: row.Region || ''
+        };
+      }
+    });
+
+    // 4. Find virtual rows from e-Lekha
+    const virtualRowsMap = {};
+    const len = elekhaData.length;
+    for (let i = 0; i < len; i++) {
+      const row = elekhaData[i];
+      const hoa = String(row.HOA || '').trim();
+      if (!hoa.startsWith('3201') && !hoa.startsWith('5201')) continue;
+      const ho = String(row.HO || '').trim();
+      if (!ho) continue;
+
+      const key = `${ho.toLowerCase()}_${hoa.toLowerCase()}`;
+      if (existingBudgetKeys.has(key)) continue;
+
+      if (!virtualRowsMap[key]) {
+        virtualRowsMap[key] = {
+          ho,
+          hoa,
+          description: row.Description || '',
+          payment: 0,
+          region: row.Region || ''
+        };
+      }
+      virtualRowsMap[key].payment += (parseNumber(row['Payment (Rs.)']) + parseNumber(row['Receipt (Rs.)']));
+    }
+
+    const virtualRows = Object.values(virtualRowsMap)
+      .map(vRow => {
+        const lookupInfo = unitToInfoMap[vRow.ho.toLowerCase()] || {};
+        // Ignore the office which does not have Office ID in the budget report
+        if (!lookupInfo.officeId || lookupInfo.officeId.trim() === '') {
+          return null;
+        }
+        return {
+          'Office ID': lookupInfo.officeId,
+          'Name of Unit (HO/Division)': vRow.ho,
+          'Region': lookupInfo.region || vRow.region || '',
+          'HOA': vRow.hoa,
+          'Description': vRow.description,
+          'APT Alloted': 0,
+          'APT Consumed': 0,
+          'e-lekha Consumed': vRow.payment,
+          'Diff. (APT - e-Lekha)': 0 - vRow.payment,
+          'APT Consumed %': 0,
+          'e-Lekha Consumed %': 0
+        };
+      })
+      .filter(Boolean);
+
+    // 5. Combine existing mapped rows and virtual rows
+    return [...existingMappedRows, ...virtualRows];
+  }, [budgetData, elekhaLookupMap, elekhaData]);
+
+  // Helper for cascading filters on Budget
+  const getFilteredDataForColumn = (excludeColumnName) => {
+    return mappedBudgetData.filter(row => {
+      // 0. Allowed Office check
+      if (currentUser && currentUser.offices && currentUser.offices.length > 0) {
+        if (!isOfficeAllowed(row['Office ID'], row['Name of Unit (HO/Division)'])) {
+          return false;
+        }
+      }
+
+      // 1. Region filter
+      if (budgetRegion !== 'All' && row.Region !== budgetRegion) {
+        return false;
+      }
+
+      // 2. Search filter (searches by Name of Unit, Office ID, HOA, Description, Region)
+      if (budgetSearch.trim() !== '') {
+        const search = budgetSearch.toLowerCase();
+        const unitMatch = String(row['Name of Unit (HO/Division)'] || '').toLowerCase().includes(search);
+        const idMatch = String(row['Office ID'] || '').toLowerCase().includes(search);
+        const hoaMatch = String(row.HOA || '').toLowerCase().includes(search);
+        const descMatch = String(row.Description || '').toLowerCase().includes(search);
+        const regionMatch = String(row.Region || '').toLowerCase().includes(search);
+        if (!unitMatch && !idMatch && !hoaMatch && !descMatch && !regionMatch) return false;
+      }
+
+      // 3. Status filter (based on APT Consumed %)
+      if (budgetFilterStatus !== 'All') {
+        const pct = row['APT Consumed %'];
+        if (budgetFilterStatus === 'Over' && pct <= 100) return false;
+        if (budgetFilterStatus === 'Warning' && (pct < 85 || pct > 100)) return false;
+        if (budgetFilterStatus === 'Safe' && pct >= 85) return false;
+      }
+
+      // 4. Custom percentage search
+      if (pctSearchVal.trim() !== '') {
+        const targetPct = parseFloat(pctSearchVal);
+        if (!isNaN(targetPct)) {
+          const valToCompare = pctSearchType === 'apt' ? row['APT Consumed %'] : row['e-Lekha Consumed %'];
+          if (valToCompare < targetPct) {
+            return false;
+          }
+        }
+      }
+
+      // 5. Analysis filter (if active)
+      if (isAnalysisMode && selectedAnalysisType !== 'all') {
+        const aptAllotedVal = row['APT Alloted'];
+        const aptConsumedVal = row['APT Consumed'];
+        const elekhaConsumedVal = row['e-lekha Consumed'] || 0;
+        
+        if (selectedAnalysisType === 'over') {
+          if (!(aptAllotedVal > 0 && aptConsumedVal > aptAllotedVal)) return false;
+        } else if (selectedAnalysisType === 'under') {
+          if (!(aptAllotedVal > 0 && (aptConsumedVal / aptAllotedVal) <= 0.20)) return false;
+        } else if (selectedAnalysisType === 'no_allotment') {
+          if (!(aptAllotedVal === 0 && elekhaConsumedVal > 0)) return false;
+        }
+      }
+
+      // 6. Column filters (checks for selected values, excluding active column)
+      for (const [colName, selectedSet] of Object.entries(budgetColumnFilters)) {
+        if (colName === excludeColumnName) continue;
+        if (selectedSet && selectedSet.size > 0) {
+          let val = '';
+          if (colName === 'APT Consumed %' || colName === 'e-Lekha Consumed %') {
+            val = typeof row[colName] === 'number' ? row[colName].toFixed(2) : String(row[colName]);
+          } else {
+            val = (row[colName] === undefined || row[colName] === null) ? '' : String(row[colName]).trim();
+          }
+          if (!selectedSet.has(val)) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    });
+  };
+
+  // Budget filtered data (computed locally in React)
+  const filteredBudgetData = useMemo(() => {
+    return getFilteredDataForColumn('');
+  }, [mappedBudgetData, budgetSearch, budgetRegion, budgetFilterStatus, budgetColumnFilters, pctSearchVal, pctSearchType, isAnalysisMode, selectedAnalysisType]);
+
+  // Budget Paginated Data
+  const paginatedBudgetData = useMemo(() => {
+    const start = budgetPage * budgetRowsPerPage;
+    return filteredBudgetData.slice(start, start + budgetRowsPerPage);
+  }, [filteredBudgetData, budgetPage, budgetRowsPerPage]);
+
+  // Extract report date for the Budget tab
+  const budgetReportDate = useMemo(() => {
+    const budgetDateObj = reportMetadata.find(m => m.key === 'Budget_report_date');
+    if (budgetDateObj && budgetDateObj.value) return budgetDateObj.value;
+    const elekhaDateObj = reportMetadata.find(m => m.key === 'e-Lekha_report_date');
+    if (elekhaDateObj && elekhaDateObj.value) return elekhaDateObj.value;
+    return '';
+  }, [reportMetadata]);
+
+  // Budget tab KPI metrics summary (the 6 stats)
+  const budgetKpis = useMemo(() => {
+    let allotted = 0;
+    let consumedAPT = 0;
+    let consumedElekha = 0;
+    let diff = 0;
+
+    filteredBudgetData.forEach(row => {
+      allotted += parseNumber(row['APT Alloted']);
+      consumedAPT += parseNumber(row['APT Consumed']);
+      consumedElekha += row['e-lekha Consumed'] || 0;
+      diff += row['Diff. (APT - e-Lekha)'] || 0;
+    });
+
+    const aptUtil = allotted > 0 ? (consumedAPT / allotted) * 100 : 0;
+    const elekhaUtil = allotted > 0 ? (consumedElekha / allotted) * 100 : 0;
 
     return {
-      totalAlloted,
-      totalAptConsumed,
-      totalElekhaConsumed,
+      allotted,
+      consumedAPT,
+      consumedElekha,
       diff,
-      aptConsumedPct,
-      elekhaConsumedPct
+      aptUtil,
+      elekhaUtil
     };
   }, [filteredBudgetData]);
 
-  // Summary Metrics for e-Lekha
-  const elekhaMetrics = useMemo(() => {
+  // e-Lekha tab KPI metrics summary (the 6 stats)
+  const elekhaKpis = useMemo(() => {
     let totalReceipts = 0;
     let totalPayments = 0;
+    const uniqueHoasFiltered = new Set();
+    const uniqueHosFiltered = new Set();
+    const uniqueDivsFiltered = new Set();
 
     filteredElekhaData.forEach(row => {
       totalReceipts += parseNumber(row['Receipt (Rs.)']);
       totalPayments += parseNumber(row['Payment (Rs.)']);
+      if (row.HOA) uniqueHoasFiltered.add(String(row.HOA).trim());
+      if (row.HO) uniqueHosFiltered.add(String(row.HO).trim());
+      if (row.Division) uniqueDivsFiltered.add(String(row.Division).trim());
     });
 
-    const netAmount = totalReceipts - totalPayments;
+    const diff = totalReceipts - totalPayments;
+
     return {
       totalReceipts,
       totalPayments,
-      netAmount,
-      totalTransactions: filteredElekhaData.length
+      diff,
+      numHoas: uniqueHoasFiltered.size,
+      numHos: uniqueHosFiltered.size,
+      numDivs: uniqueDivsFiltered.size
     };
   }, [filteredElekhaData]);
 
-  // -------------------------------------------------------------
-  // Generate Vertical Revenue Matrix Calculations
-  // -------------------------------------------------------------
-  const handleGenerateReport = () => {
-    setGeneratedConfig({
-      type: comparisonType,
-      p1From: p1FromMonth,
-      p1To: p1ToMonth,
-      p2From: p2FromMonth,
-      p2To: p2ToMonth,
-      p1FromDate,
-      p1ToDate,
-      p2FromDate,
-      p2ToDate,
-      region: selectedRegion,
-      units: [...selectedUnits],
-      reportType
+  // Dynamic Statistics derived from full dataset
+  const datasetStats = useMemo(() => {
+    if (elekhaData.length === 0) return { rows: 0, hoas: 0, HOs: 0, divisions: 0, regions: 0 };
+    const hoas = new Set();
+    const hos = new Set();
+    const divisions = new Set();
+    const regions = new Set();
+    
+    elekhaData.forEach(row => {
+      if (row.HOA) hoas.add(String(row.HOA).trim());
+      if (row.HO) hos.add(String(row.HO).trim());
+      if (row.Division) divisions.add(String(row.Division).trim());
+      if (row.Region) regions.add(String(row.Region).trim());
     });
-  };
 
+    return {
+      rows: elekhaData.length,
+      hoas: hoas.size,
+      hos: hos.size,
+      divisions: divisions.size,
+      regions: regions.size
+    };
+  }, [elekhaData]);
+
+  // Analysis Statistics
+  const analysisStats = useMemo(() => {
+    let overCount = 0, overAllotted = 0, overConsumed = 0;
+    let underCount = 0, underAllotted = 0, underConsumed = 0;
+    let noAllotCount = 0, noAllotConsumed = 0;
+
+    mappedBudgetData.forEach(row => {
+      if (budgetRegion !== 'All' && row.Region !== budgetRegion) return;
+      if (budgetSearch.trim() !== '') {
+        const search = budgetSearch.toLowerCase();
+        const unitMatch = String(row['Name of Unit (HO/Division)'] || '').toLowerCase().includes(search);
+        const idMatch = String(row['Office ID'] || '').toLowerCase().includes(search);
+        const hoaMatch = String(row.HOA || '').toLowerCase().includes(search);
+        const descMatch = String(row.Description || '').toLowerCase().includes(search);
+        const regionMatch = String(row.Region || '').toLowerCase().includes(search);
+        if (!unitMatch && !idMatch && !hoaMatch && !descMatch && !regionMatch) return;
+      }
+
+      const aptAllotedVal = row['APT Alloted'];
+      const aptConsumedVal = row['APT Consumed'];
+      const elekhaConsumedVal = row['e-lekha Consumed'] || 0;
+
+      if (aptAllotedVal > 0 && aptConsumedVal > aptAllotedVal) {
+        overCount++;
+        overAllotted += aptAllotedVal;
+        overConsumed += aptConsumedVal;
+      }
+
+      if (aptAllotedVal > 0 && (aptConsumedVal / aptAllotedVal) <= 0.20) {
+        underCount++;
+        underAllotted += aptAllotedVal;
+        underConsumed += aptConsumedVal;
+      }
+
+      if (aptAllotedVal === 0 && elekhaConsumedVal > 0) {
+        noAllotCount++;
+        noAllotConsumed += elekhaConsumedVal;
+      }
+    });
+
+    return {
+      overCount, overAllotted, overConsumed,
+      underCount, underAllotted, underConsumed,
+      noAllotCount, noAllotConsumed
+    };
+  }, [mappedBudgetData, budgetRegion, budgetSearch]);
+
+  // Aggregated Budget Chart Data
+  const budgetChartData = useMemo(() => {
+    if (selectedChartGroupBy === 'region') {
+      const regionData = {};
+      filteredBudgetData.forEach(row => {
+        const reg = row.Region || 'Unknown';
+        if (!regionData[reg]) regionData[reg] = { allotted: 0, consumed: 0, elekha: 0 };
+        regionData[reg].allotted += row['APT Alloted'] || 0;
+        regionData[reg].consumed += row['APT Consumed'] || 0;
+        regionData[reg].elekha += row['e-lekha Consumed'] || 0;
+      });
+
+      return Object.entries(regionData).map(([reg, vals]) => ({
+        label: reg,
+        value: selectedChartMetric === 'alloted' ? vals.allotted : selectedChartMetric === 'consumed' ? vals.consumed : vals.elekha,
+        value2: selectedChartMetric === 'consumed' ? vals.allotted : undefined
+      }));
+    }
+
+    if (selectedChartGroupBy === 'status') {
+      let safe = 0, warning = 0, over = 0;
+      filteredBudgetData.forEach(row => {
+        const pct = row['APT Consumed %'] || 0;
+        if (pct > 100) over++;
+        else if (pct >= 85) warning++;
+        else safe++;
+      });
+      return [
+        { label: 'Safe (< 85%)', value: safe },
+        { label: 'Warning (85%-100%)', value: warning },
+        { label: 'Over (> 100%)', value: over }
+      ];
+    }
+
+    if (selectedChartGroupBy === 'hoa') {
+      const hoaData = {};
+      filteredBudgetData.forEach(row => {
+        const hoa = row.HOA || 'Unknown';
+        if (!hoaData[hoa]) hoaData[hoa] = { allotted: 0, consumed: 0, elekha: 0 };
+        hoaData[hoa].allotted += row['APT Alloted'] || 0;
+        hoaData[hoa].consumed += row['APT Consumed'] || 0;
+        hoaData[hoa].elekha += row['e-lekha Consumed'] || 0;
+      });
+
+      return Object.entries(hoaData)
+        .map(([hoa, vals]) => ({
+          label: hoa,
+          value: selectedChartMetric === 'alloted' ? vals.allotted : selectedChartMetric === 'consumed' ? vals.consumed : vals.elekha,
+          value2: selectedChartMetric === 'consumed' ? vals.allotted : undefined
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10);
+    }
+
+    return [];
+  }, [filteredBudgetData, selectedChartGroupBy, selectedChartMetric]);
+
+  // Compute the Matrix Data structure for the Vertical Revenue Report Comparison
   const verticalRevenueReportData = useMemo(() => {
-    if (!generatedConfig) return null;
+    if (!generatedConfig || elekhaData.length === 0 || hoaList.length === 0) return null;
+    
+    const { 
+      type: gType, 
+      p1From: gP1From, 
+      p1To: gP1To, 
+      p2From: gP2From, 
+      p2To: gP2To, 
+      p1FromDate: gP1FromDate,
+      p1ToDate: gP1ToDate,
+      p2FromDate: gP2FromDate,
+      p2ToDate: gP2ToDate,
+      reportType: gReportType, 
+      groupBy: gGroupBy 
+    } = generatedConfig;
 
-    const { type, p1From, p1To, p2From, p2To, p1FromDate, p1ToDate, p2FromDate, p2ToDate, region, units } = generatedConfig;
-
-    // Filter DDO mapping based on region and selected units
-    let validDdos = revenueDdoMappingData;
-    if (region !== 'ALL') {
-      validDdos = validDdos.filter(d => d.Region === region);
-    }
-    if (units.length > 0) {
-      validDdos = validDdos.filter(d => units.includes(d.HO));
-    }
-
-    // Map DDO Code -> HO (Unit Name)
-    const ddoToUnitMap = {};
-    validDdos.forEach(d => {
-      const code = String(d['DDO Code'] || '').trim();
-      if (code) {
-        ddoToUnitMap[code] = d.HO;
-      }
-    });
-
-    // Unique HO Unit names in list
-    const uniqueUnitsSet = new Set();
-    validDdos.forEach(d => {
-      if (d.HO) uniqueUnitsSet.add(d.HO);
-    });
-    const uniqueUnits = Array.from(uniqueUnitsSet).sort().map(name => ({
-      name,
-      label: name
-    }));
-
-    // Date / Month range matching helper functions
-    const isDateInP1 = (dateStr, monthStr) => {
-      if (type === 'Month') {
-        if (!monthStr) return false;
-        // YYYY-MM comparison
-        return monthStr >= p1From && monthStr <= p1To;
+    const isInPeriod = (row, periodNum) => {
+      if (gType === 'Month') {
+        const rowMonth = row.Month;
+        if (!rowMonth) return false;
+        
+        const start = periodNum === 1 ? gP1From : gP2From;
+        const end = periodNum === 1 ? gP1To : gP2To;
+        
+        const startIdx = uniqueMonths.indexOf(start);
+        const endIdx = uniqueMonths.indexOf(end);
+        const rowIdx = uniqueMonths.indexOf(rowMonth);
+        
+        if (startIdx === -1 || endIdx === -1 || rowIdx === -1) return false;
+        const min = Math.min(startIdx, endIdx);
+        const max = Math.max(startIdx, endIdx);
+        
+        return rowIdx >= min && rowIdx <= max;
       } else {
-        if (!dateStr) return false;
-        // DD/MM/YYYY or YYYY-MM-DD parsing
-        let parsed = dateStr;
-        if (dateStr.includes('/')) {
-          const parts = dateStr.split('/');
-          if (parts.length === 3) {
-            parsed = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-          }
-        }
-        return parsed >= p1FromDate && parsed <= p1ToDate;
+        const txnDateStr = row['Txn Date'];
+        if (!txnDateStr) return false;
+        
+        const parts = txnDateStr.split('-');
+        if (parts.length !== 3) return false;
+        const txnDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        
+        const start = periodNum === 1 ? gP1FromDate : gP2FromDate;
+        const end = periodNum === 1 ? gP1ToDate : gP2ToDate;
+        
+        return txnDate >= start && txnDate <= end;
       }
     };
 
-    const isDateInP2 = (dateStr, monthStr) => {
-      if (type === 'Month') {
-        if (!monthStr) return false;
-        return monthStr >= p2From && monthStr <= p2To;
+    // Extract unique units for columns and map them to DDO codes using revenue_ddo_mapping
+    const unitsSet = new Set();
+    const divisionToDdosMap = {};
+    
+    // Build values index map: "HOA_UnitName_Period" -> sum
+    const valMap = {}; // key: "HOA_UnitName_Period" -> sum
+    
+    const len = elekhaData.length;
+    for (let i = 0; i < len; i++) {
+      const row = elekhaData[i];
+      const hoa = String(row.MappedHOA || row.HOA || '').trim();
+      const rawDdoCode = String(row['DDO Code'] || '').trim();
+      const cleanDdoCode = rawDdoCode.split('.')[0]; // strip decimal parts e.g. 102472.0
+      
+      if (!hoa) continue;
+
+      // Look up DDO code mapping
+      const mapped = ddoLookupMap[cleanDdoCode];
+      
+      const hoVal = mapped ? mapped.ho : row.HO;
+      const divisionVal = mapped ? mapped.division : row.Division;
+      const regionVal = mapped ? mapped.region : row.Region;
+
+      // Allowed Office filter
+      if (currentUser && currentUser.offices && currentUser.offices.length > 0) {
+        const rowOfficeId = getOfficeIdForElekhaRow(row);
+        if (!isOfficeAllowed(rowOfficeId, hoVal)) {
+          continue;
+        }
+      }
+
+      // Define column group label based on selection
+      let groupVal = '';
+      if (gGroupBy === 'ho') {
+        groupVal = hoVal;
+      } else if (gGroupBy === 'division') {
+        groupVal = divisionVal; // group purely by division name!
+        if (divisionVal && cleanDdoCode) {
+          if (!divisionToDdosMap[divisionVal]) {
+            divisionToDdosMap[divisionVal] = new Set();
+          }
+          divisionToDdosMap[divisionVal].add(cleanDdoCode);
+        }
       } else {
-        if (!dateStr) return false;
-        let parsed = dateStr;
-        if (dateStr.includes('/')) {
-          const parts = dateStr.split('/');
-          if (parts.length === 3) {
-            parsed = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-          }
-        }
-        return parsed >= p2FromDate && parsed <= p2ToDate;
+        groupVal = regionVal;
       }
-    };
 
-    // Filter e-Lekha data to only valid DDOs
-    const targetElekha = elekhaData.filter(row => {
-      const ddo = String(row['DDO Code'] || '').trim();
-      return ddoToUnitMap[ddo] !== undefined;
+      if (!groupVal || groupVal.trim() === '') continue;
+      unitsSet.add(groupVal);
+
+      // Check receipts or payments value
+      let valStr = '';
+      if (hoa === '3201031010801' || hoa === '3201031010901') {
+        valStr = row['Payment (Rs.)'];
+      } else {
+        valStr = row['Receipt (Rs.)'];
+      }
+
+      if (!valStr || valStr === '-') continue;
+      let valAmount = parseFloat(valStr.replace(/,/g, '').trim());
+      if (isNaN(valAmount)) continue;
+
+      // Apply 4% for PLI and 12% for RPLI categories
+      if (hoa.startsWith('801401')) {
+        valAmount = valAmount * 0.04;
+      } else if (hoa.startsWith('801402')) {
+        valAmount = valAmount * 0.12;
+      }
+
+      const inP1 = isInPeriod(row, 1);
+      const inP2 = isInPeriod(row, 2);
+
+      if (inP1) {
+        const key = `${hoa}_${groupVal}_1`;
+        valMap[key] = (valMap[key] || 0) + valAmount;
+      }
+      if (inP2) {
+        const key = `${hoa}_${groupVal}_2`;
+        valMap[key] = (valMap[key] || 0) + valAmount;
+      }
+    }
+
+    const uniqueUnitsSorted = Array.from(unitsSet).sort().map(name => {
+      let label = name;
+      if (gGroupBy === 'division' && divisionToDdosMap[name]) {
+        const ddosStr = Array.from(divisionToDdosMap[name]).sort().join(', ');
+        label = `${name} (${ddosStr})`;
+      }
+      return {
+        name,
+        label
+      };
     });
 
-    // Categories in Revenue_HOA.csv (CCS, FS, IRGB, MO, Parcel)
-    const categoriesOrder = ['CCS', 'FS', 'IRGB', 'MO', 'Parcel'];
-    const groupedHoas = {
-      CCS: [],
-      FS: [],
-      IRGB: [],
-      MO: [],
-      Parcel: []
-    };
-
-    revenueHoaData.forEach(h => {
-      const cat = h.Category ? h.Category.trim() : '';
-      if (groupedHoas[cat]) {
-        groupedHoas[cat].push(h);
+    const allRawUnits = uniqueUnitsSorted.map(u => u.name);
+    const selectedUnits = revenueColumnFilters['Unit'];
+    const filteredUnits = uniqueUnitsSorted.filter(u => {
+      if (selectedUnits && selectedUnits.size > 0) {
+        return selectedUnits.has(u.name);
       }
+      return true;
     });
 
-    // Matrix stores
-    // p1Totals: { "HOACode_UnitName": number }
-    // p2Totals: { "HOACode_UnitName": number }
-    const p1Totals = {};
-    const p2Totals = {};
-
-    targetElekha.forEach(row => {
-      const ddo = String(row['DDO Code'] || '').trim();
-      const unitName = ddoToUnitMap[ddo];
-      const hoaCode = String(row['HOA'] || '').trim();
-      const dateStr = String(row['Txn Date'] || '').trim();
-      const monthStr = String(row['Month'] || '').trim();
-
-      const receipts = parseNumber(row['Receipt (Rs.)']);
-      const payments = parseNumber(row['Payment (Rs.)']);
-      const net = receipts - payments;
-
-      const key = `${hoaCode}_${unitName}`;
-
-      if (isDateInP1(dateStr, monthStr)) {
-        p1Totals[key] = (p1Totals[key] || 0) + net;
+    // Group rows by HOA Category
+    const categoriesOrder = ['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'PLI', 'PLI Direct Cost', 'RPLI', 'RPLI Direct Cost'].filter(cat => {
+      const selectedCats = revenueColumnFilters['Category'];
+      if (selectedCats && selectedCats.size > 0) {
+        return selectedCats.has(cat);
       }
-      if (isDateInP2(dateStr, monthStr)) {
-        p2Totals[key] = (p2Totals[key] || 0) + net;
-      }
+      return true;
     });
 
-    // Subtotals per HOA across units
-    const rowP1Gross = {};
+    const groupedHoas = {};
+    categoriesOrder.forEach(c => { groupedHoas[c] = []; });
+
+    hoaList.forEach(item => {
+      const cat = item.Category || 'Other';
+      if (!categoriesOrder.includes(cat)) return;
+
+      const hoaCode = String(item['HOA Code'] || '').trim();
+      const desc = String(item.Description || '').trim();
+
+      const selectedHoas = revenueColumnFilters['HOA'];
+      if (selectedHoas && selectedHoas.size > 0) {
+        if (!selectedHoas.has(hoaCode)) return;
+      }
+
+      const selectedDescs = revenueColumnFilters['Description'];
+      if (selectedDescs && selectedDescs.size > 0) {
+        if (!selectedDescs.has(desc)) return;
+      }
+
+      groupedHoas[cat].push(item);
+    });
+
+    // Sort HOA rows numerically within each category
+    categoriesOrder.forEach(c => {
+      groupedHoas[c].sort((a, b) => String(a['HOA Code']).localeCompare(String(b['HOA Code'])));
+    });
+
+    // Pre-calculate sums for cells & category subtotals
+    const p1Totals = {}; // "HOA_UnitName" -> sum
+    const p2Totals = {}; // "HOA_UnitName" -> sum
+    const p1CatTotals = {}; // "Category_UnitName" -> sum
+    const p2CatTotals = {}; // "Category_UnitName" -> sum
+
+    categoriesOrder.forEach(cat => {
+      const hoas = groupedHoas[cat] || [];
+      hoas.forEach(hoa => {
+        const hoaCode = String(hoa['HOA Code'] || '').trim();
+        filteredUnits.forEach(g => {
+          const valP1 = valMap[`${hoaCode}_${g.name}_1`] || 0;
+          const valP2 = valMap[`${hoaCode}_${g.name}_2`] || 0;
+
+          p1Totals[`${hoaCode}_${g.name}`] = valP1;
+          p2Totals[`${hoaCode}_${g.name}`] = valP2;
+
+          p1CatTotals[`${cat}_${g.name}`] = (p1CatTotals[`${cat}_${g.name}`] || 0) + valP1;
+          p2CatTotals[`${cat}_${g.name}`] = (p2CatTotals[`${cat}_${g.name}`] || 0) + valP2;
+        });
+      });
+    });
+
+    // Pre-calculate Row & Column Gross Totals
+    const rowP1Gross = {}; 
     const rowP2Gross = {};
-
-    // Category Subtotals
-    const p1CatTotals = {};
-    const p2CatTotals = {};
-    const catP1Gross = {};
+    const catP1Gross = {}; 
     const catP2Gross = {};
-
-    // Grand Totals per Unit
-    const unitP1Gross = {};
-    const unitP2Gross = {};
-
     let grandP1Gross = 0;
     let grandP2Gross = 0;
 
     categoriesOrder.forEach(cat => {
-      const hoas = groupedHoas[cat] || [];
       catP1Gross[cat] = 0;
       catP2Gross[cat] = 0;
-
-      hoas.forEach(h => {
-        const hoaCode = String(h['HOA Code'] || '').trim();
-        rowP1Gross[hoaCode] = 0;
-        rowP2Gross[hoaCode] = 0;
-
-        uniqueUnits.forEach(u => {
-          const key = `${hoaCode}_${u.name}`;
-          const val1 = p1Totals[key] || 0;
-          const val2 = p2Totals[key] || 0;
-
-          rowP1Gross[hoaCode] += val1;
-          rowP2Gross[hoaCode] += val2;
-
-          const catUnitKey = `${cat}_${u.name}`;
-          p1CatTotals[catUnitKey] = (p1CatTotals[catUnitKey] || 0) + val1;
-          p2CatTotals[catUnitKey] = (p2CatTotals[catUnitKey] || 0) + val2;
-
-          unitP1Gross[u.name] = (unitP1Gross[u.name] || 0) + val1;
-          unitP2Gross[u.name] = (unitP2Gross[u.name] || 0) + val2;
+      const hoas = groupedHoas[cat] || [];
+      hoas.forEach(hoa => {
+        const hoaCode = String(hoa['HOA Code'] || '').trim();
+        let r1 = 0;
+        let r2 = 0;
+        filteredUnits.forEach(g => {
+          r1 += p1Totals[`${hoaCode}_${g.name}`] || 0;
+          r2 += p2Totals[`${hoaCode}_${g.name}`] || 0;
         });
-
-        catP1Gross[cat] += rowP1Gross[hoaCode];
-        catP2Gross[cat] += rowP2Gross[hoaCode];
+        rowP1Gross[hoaCode] = r1;
+        rowP2Gross[hoaCode] = r2;
+        
+        catP1Gross[cat] += r1;
+        catP2Gross[cat] += r2;
       });
-
       grandP1Gross += catP1Gross[cat];
       grandP2Gross += catP2Gross[cat];
     });
 
+    const unitP1Gross = {}; 
+    const unitP2Gross = {};
+    filteredUnits.forEach(g => {
+      let u1 = 0;
+      let u2 = 0;
+      categoriesOrder.forEach(cat => {
+        u1 += p1CatTotals[`${cat}_${g.name}`] || 0;
+        u2 += p2CatTotals[`${cat}_${g.name}`] || 0;
+      });
+      unitP1Gross[g.name] = u1;
+      unitP2Gross[g.name] = u2;
+    });
+
     return {
-      uniqueUnits,
+      uniqueUnits: filteredUnits,
+      allRawUnits,
       categoriesOrder,
       groupedHoas,
       p1Totals,
@@ -799,17 +1891,640 @@ export default function App() {
       unitP1Gross,
       unitP2Gross
     };
-  }, [generatedConfig, revenueDdoMappingData, revenueHoaData, elekhaData]);
+  }, [generatedConfig, elekhaData, hoaList, uniqueMonths, ddoLookupMap, revenueColumnFilters]);
 
-  // Helper text for Period Headers
-  const getPeriodLabel = (periodNum) => {
-    if (!generatedConfig) return `P${periodNum}`;
+  // Category KPIs calculation for Vertical Revenue comparison tab
+  const revenueKpis = useMemo(() => {
+    if (!verticalRevenueReportData) return null;
+    const { uniqueUnits } = verticalRevenueReportData;
+    const result = {};
+    
+    const catsToCalc = ['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'PLI', 'PLI Direct Cost', 'RPLI', 'RPLI Direct Cost'];
+    catsToCalc.forEach(cat => {
+      let p1Sum = 0;
+      let p2Sum = 0;
+      uniqueUnits.forEach(g => {
+        p1Sum += verticalRevenueReportData.p1CatTotals[`${cat}_${g.name}`] || 0;
+        p2Sum += verticalRevenueReportData.p2CatTotals[`${cat}_${g.name}`] || 0;
+      });
+      result[cat] = { p1: p1Sum, p2: p2Sum };
+    });
+
+    const kpiResult = {
+      CCS: result['CCS'] || { p1: 0, p2: 0 },
+      FS: result['FS'] || { p1: 0, p2: 0 },
+      IRGB: result['IRGB'] || { p1: 0, p2: 0 },
+      MO: result['MO'] || { p1: 0, p2: 0 },
+      Parcel: result['Parcel'] || { p1: 0, p2: 0 },
+      PLI: {
+        p1: (result['PLI']?.p1 || 0) + (result['PLI Direct Cost']?.p1 || 0),
+        p2: (result['PLI']?.p2 || 0) + (result['PLI Direct Cost']?.p2 || 0)
+      },
+      RPLI: {
+        p1: (result['RPLI']?.p1 || 0) + (result['RPLI Direct Cost']?.p1 || 0),
+        p2: (result['RPLI']?.p2 || 0) + (result['RPLI Direct Cost']?.p2 || 0)
+      }
+    };
+    
+    let grossP1 = 0;
+    let grossP2 = 0;
+    catsToCalc.forEach(cat => {
+      grossP1 += result[cat]?.p1 || 0;
+      grossP2 += result[cat]?.p2 || 0;
+    });
+    kpiResult['Gross'] = { p1: grossP1, p2: grossP2 };
+    
+    return kpiResult;
+  }, [verticalRevenueReportData]);
+
+  // Aggregated Vertical Revenue Chart Data (excluding Gross)
+  const revenueChartData = useMemo(() => {
+    if (!revenueKpis) return [];
+    const categories = ['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'PLI', 'RPLI'];
+    return categories.map(cat => ({
+      label: translateCategoryVal(cat),
+      value: revenueKpis[cat]?.p1 || 0,
+      value2: revenueKpis[cat]?.p2 || 0
+    }));
+  }, [revenueKpis]);
+
+  // Period label helper method
+  const getPeriodLabel = useCallback((periodNum) => {
+    if (!generatedConfig) return periodNum === 1 ? 'P1' : 'P2';
     const { type, p1From, p1To, p2From, p2To, p1FromDate, p1ToDate, p2FromDate, p2ToDate } = generatedConfig;
-    if (periodNum === 1) {
-      return type === 'Month' ? `${p1From} to ${p1To}` : `${p1FromDate} to ${p1ToDate}`;
+    if (type === 'Month') {
+      if (periodNum === 1) {
+        return p1From === p1To ? p1From : `${p1From} to ${p1To}`;
+      } else {
+        return p2From === p2To ? p2From : `${p2From} to ${p2To}`;
+      }
     } else {
-      return type === 'Month' ? `${p2From} to ${p2To}` : `${p2FromDate} to ${p2ToDate}`;
+      const formatNiceDate = (dStr) => {
+        if (!dStr) return '';
+        const parts = dStr.split('-');
+        if (parts.length === 3) {
+          return `${parts[2]}/${parts[1]}/${parts[0].substring(2)}`;
+        }
+        return dStr;
+      };
+      if (periodNum === 1) {
+        return `${formatNiceDate(p1FromDate)} to ${formatNiceDate(p1ToDate)}`;
+      } else {
+        return `${formatNiceDate(p2FromDate)} to ${formatNiceDate(p2ToDate)}`;
+      }
     }
+  }, [generatedConfig]);
+
+
+  // Authentication Handlers
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+    if (!loginUserId || !loginPassword) {
+      setLoginError('User ID and Password are required.');
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('user_id', loginUserId.trim())
+        .single();
+
+      if (error || !data) {
+        setLoginError('Invalid User ID or password.');
+        return;
+      }
+
+      if (data.password !== loginPassword) {
+        setLoginError('Invalid User ID or password.');
+        return;
+      }
+
+      // Successful login
+      setCurrentUser(data);
+      setIsLoggedIn(true);
+      localStorage.setItem('cebar_user', JSON.stringify(data));
+      setLoginUserId('');
+      setLoginPassword('');
+    } catch (err) {
+      console.error('Login error:', err);
+      setLoginError('An error occurred during login. Please try again.');
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setIsLoggedIn(false);
+    localStorage.removeItem('cebar_user');
+    setActiveTab('budget');
+  };
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setPasswordChangeError('');
+    if (!newPassword || !confirmNewPassword) {
+      setPasswordChangeError('All fields are required.');
+      return;
+    }
+    if (newPassword === 'Ahd@12345') {
+      setPasswordChangeError('New password cannot be the default password.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordChangeError('Passwords do not match.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ password: newPassword, needs_password_change: false })
+        .eq('user_id', currentUser.user_id);
+
+      if (error) throw error;
+
+      // Update local state
+      const updatedUser = { ...currentUser, password: newPassword, needs_password_change: false };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('cebar_user', JSON.stringify(updatedUser));
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (err) {
+      console.error('Password change error:', err);
+      setPasswordChangeError('Failed to change password. Please try again.');
+    }
+  };
+
+  const handleVoluntaryPasswordChange = async (e) => {
+    e.preventDefault();
+    setVPasswordChangeError('');
+    if (!vCurrentPassword || !vNewPassword || !vConfirmNewPassword) {
+      setVPasswordChangeError('All fields are required.');
+      return;
+    }
+    if (vCurrentPassword !== currentUser.password) {
+      setVPasswordChangeError('Current password is incorrect.');
+      return;
+    }
+    if (vNewPassword === 'Ahd@12345') {
+      setVPasswordChangeError('New password cannot be the default password.');
+      return;
+    }
+    if (vNewPassword !== vConfirmNewPassword) {
+      setVPasswordChangeError('New passwords do not match.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ password: vNewPassword, needs_password_change: false })
+        .eq('user_id', currentUser.user_id);
+
+      if (error) throw error;
+
+      // Update local state
+      const updatedUser = { ...currentUser, password: vNewPassword, needs_password_change: false };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('cebar_user', JSON.stringify(updatedUser));
+      setVCurrentPassword('');
+      setVNewPassword('');
+      setVConfirmNewPassword('');
+      setShowChangePasswordModal(false);
+      alert('Password changed successfully.');
+    } catch (err) {
+      console.error('Password change error:', err);
+      setVPasswordChangeError('Failed to change password. Please try again.');
+    }
+  };
+
+  // User Management Handlers (SA only)
+  const handleCreateOrUpdateUser = async (e) => {
+    e.preventDefault();
+    setUserManagementError('');
+
+    if (!manageUserId || !manageName || !manageMobileNo) {
+      setUserManagementError('All fields except office select are required.');
+      return;
+    }
+
+    if (manageUserId.length !== 8 || !/^\d+$/.test(manageUserId)) {
+      setUserManagementError('User ID must be exactly 8 digits.');
+      return;
+    }
+
+    if (manageMobileNo.length !== 10 || !/^\d+$/.test(manageMobileNo)) {
+      setUserManagementError('Mobile Number must be exactly 10 digits.');
+      return;
+    }
+
+    let calculatedOfficeStr = 'All Offices';
+    if (manageOffices.length === 1) {
+      const found = officeMapping.find(o => String(o['Office ID']) === manageOffices[0]);
+      calculatedOfficeStr = found ? found['Office Name'] : '1 Office';
+    } else if (manageOffices.length > 0 && manageOffices.length < officeMapping.length) {
+      calculatedOfficeStr = `${manageOffices.length} Offices`;
+    }
+
+    try {
+      if (isEditingUser) {
+        // Master user cannot have their type changed from SA
+        if (manageUserId === '10032853' && manageType !== 'SA') {
+          setUserManagementError('Master user must be of type SA.');
+          return;
+        }
+
+        const { error } = await supabase
+          .from('users')
+          .update({
+            name: manageName.trim(),
+            mobile_no: manageMobileNo.trim(),
+            office: calculatedOfficeStr,
+            type: manageType,
+            offices: manageOffices,
+            rights: manageRights
+          })
+          .eq('user_id', manageUserId);
+
+        if (error) throw error;
+
+        // Update local session if editing self
+        if (currentUser && currentUser.user_id === manageUserId) {
+          const updatedUser = {
+            ...currentUser,
+            name: manageName.trim(),
+            mobile_no: manageMobileNo.trim(),
+            office: calculatedOfficeStr,
+            type: manageType,
+            offices: manageOffices,
+            rights: manageRights
+          };
+          setCurrentUser(updatedUser);
+          localStorage.setItem('cebar_user', JSON.stringify(updatedUser));
+        }
+      } else {
+        // Check if user already exists
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('user_id')
+          .eq('user_id', manageUserId)
+          .single();
+
+        if (existingUser) {
+          setUserManagementError('User ID already exists.');
+          return;
+        }
+
+        const { error } = await supabase
+          .from('users')
+          .insert([{
+            user_id: manageUserId,
+            name: manageName.trim(),
+            mobile_no: manageMobileNo.trim(),
+            office: calculatedOfficeStr,
+            type: manageType,
+            password: 'Ahd@12345',
+            needs_password_change: true,
+            offices: manageOffices,
+            rights: manageRights
+          }]);
+
+        if (error) throw error;
+      }
+
+      // Refresh list and close modal
+      await fetchUsers();
+      setShowUserModal(false);
+      resetUserManagementForm();
+    } catch (err) {
+      console.error('User save error:', err);
+      setUserManagementError('Failed to save user. Please try again.');
+    }
+  };
+
+  const resetUserManagementForm = () => {
+    setManageUserId('');
+    setManageName('');
+    setManageMobileNo('');
+    setManageOffice('');
+    setManageType('View');
+    setIsEditingUser(false);
+    setUserManagementError('');
+    setManageOffices(officeMapping.map(o => String(o['Office ID'])));
+    setManageRights(['budget', 'elekha', 'revenue', 'users', 'sync']);
+    setOfficeSearchQuery('');
+  };
+
+  const handleEditClick = (user) => {
+    setManageUserId(user.user_id);
+    setManageName(user.name);
+    setManageMobileNo(user.mobile_no);
+    setManageOffice(user.office || '');
+    setManageType(user.type);
+    setIsEditingUser(true);
+    setManageOffices(user.offices && user.offices.length > 0 ? user.offices : officeMapping.map(o => String(o['Office ID'])));
+    setManageRights(user.rights && user.rights.length > 0 ? user.rights : ['budget', 'elekha', 'revenue', 'users', 'sync']);
+    setOfficeSearchQuery('');
+    setShowUserModal(true);
+  };
+
+  const handleDeleteUser = async (userId) => {
+    if (userId === '10032853') {
+      alert('Master user ID cannot be deleted.');
+      return;
+    }
+
+    const userToDelete = usersList.find(u => u.user_id === userId);
+    if (userToDelete?.type === 'SA' && currentUser.user_id !== '10032853') {
+      alert('Only the master user 10032853 can delete SA users.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete user ${userId}?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      await fetchUsers();
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      alert('Failed to delete user. Please try again.');
+    }
+  };
+
+  const handleResetUserPassword = async (userId) => {
+    if (!confirm(`Are you sure you want to reset password for user ${userId} to default password (Ahd@12345)?`)) {
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ password: 'Ahd@12345', needs_password_change: true })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      alert(`Password for user ${userId} reset successfully to Ahd@12345.`);
+      await fetchUsers();
+    } catch (err) {
+      console.error('Error resetting password:', err);
+      alert('Failed to reset password. Please try again.');
+    }
+  };
+
+  // Database Synchronization Handlers (SA only)
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setSyncFile(file);
+    setSyncError('');
+    setSyncSuccess(false);
+    setSyncProgress('Parsing file...');
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target.result;
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        // Parse rows to JSON
+        const json = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+        
+        if (json.length === 0) {
+          throw new Error('The selected file is empty.');
+        }
+
+        // Get headers of first sheet
+        const headersJson = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        const headers = headersJson[0] ? headersJson[0].map(h => String(h).trim()) : [];
+        
+        if (headers.length === 0) {
+          throw new Error('No column headers detected in the file.');
+        }
+
+        setSyncHeaders(headers);
+        setParsedRows(json);
+
+        // Pre-build default mappings
+        const targetCols = syncTable === 'Budget' ? BUDGET_COLUMNS : ELEKHA_COLUMNS;
+        const initialMapping = {};
+        
+        targetCols.forEach(targetCol => {
+          const normalizedTarget = targetCol.toLowerCase().replace(/[^a-z0-9]/g, '');
+          
+          const match = headers.find(h => {
+            const normalizedHeader = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return normalizedHeader === normalizedTarget || 
+                   normalizedHeader.includes(normalizedTarget) || 
+                   normalizedTarget.includes(normalizedHeader);
+          });
+          
+          initialMapping[targetCol] = match || '';
+        });
+
+        setColumnMapping(initialMapping);
+        setSyncProgress(`Loaded file successfully. Found ${json.length} rows.`);
+      } catch (err) {
+        console.error('File parse error:', err);
+        setSyncError(`Error reading file: ${err.message || err}`);
+        setSyncFile(null);
+        setSyncHeaders([]);
+        setParsedRows([]);
+        setColumnMapping({});
+        setSyncProgress('');
+      }
+    };
+
+    reader.onerror = () => {
+      setSyncError('Error reading file.');
+      setSyncFile(null);
+      setSyncProgress('');
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleStartSync = async () => {
+    if (!syncFile || parsedRows.length === 0) {
+      setSyncError('Please upload a file first.');
+      return;
+    }
+
+    const activeMapping = { ...columnMapping };
+    const targetCols = syncTable === 'Budget' ? BUDGET_COLUMNS : ELEKHA_COLUMNS;
+    
+    const mappedCount = Object.values(activeMapping).filter(v => !!v).length;
+    if (mappedCount === 0) {
+      setSyncError('No columns are mapped. Please map at least one column to import data.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to save ${parsedRows.length} rows to the "${syncTable}" table in Supabase in ${syncMode.toUpperCase()} mode?`)) {
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncError('');
+    setSyncSuccess(false);
+    setSyncProgress('Preparing synchronization...');
+
+    try {
+      const dbTable = syncTable === 'Budget' ? 'Budget' : 'e-Lekha';
+
+      // 1. If REPLACE mode is active, delete all records first
+      if (syncMode === 'replace') {
+        setSyncProgress('Deleting existing table records in Supabase...');
+        const { error: deleteError } = await supabase
+          .from(dbTable)
+          .delete()
+          .neq('id', -1);
+
+        if (deleteError) {
+          throw new Error(`Failed to clear table records: ${deleteError.message}`);
+        }
+      }
+
+      // 2. Format parsed rows into DB schema objects
+      setSyncProgress('Formatting records for database insertion...');
+      const formattedRows = parsedRows.map(row => {
+        const dbRecord = {};
+        
+        targetCols.forEach(col => {
+          const fileColName = activeMapping[col];
+          if (fileColName) {
+            let val = row[fileColName];
+            
+            if (syncTable === 'Budget') {
+              if (col === 'Year') {
+                dbRecord[col] = val ? parseInt(String(val).replace(/\D/g, ''), 10) : null;
+              } else if (col === 'HOA') {
+                let hoaVal = '';
+                if (val !== undefined && val !== null && val !== '') {
+                  const num = Number(val);
+                  if (!isNaN(num)) {
+                    hoaVal = num.toFixed(0);
+                  } else {
+                    hoaVal = String(val).trim();
+                  }
+                }
+                if (hoaVal && /^\d+$/.test(hoaVal)) {
+                  hoaVal = hoaVal.padStart(15, '0');
+                }
+                dbRecord[col] = hoaVal;
+              } else if ([
+                'Allotted Budget (A)',
+                'Reallotted Budget (B)',
+                'Distributed Budget (C)',
+                'Transferred Budget (D)',
+                'Re-Appropritaion Receipt (E)',
+                'Re-Appropritaion Transferred (F)',
+                'Reserved Budget (G)',
+                'Consumed Budget (H)',
+                'Consumable Budget (I)',
+                'Liability (J)'
+              ].includes(col)) {
+                dbRecord[col] = val ? parseFloat(String(val).replace(/[^0-9.-]/g, '')) : 0;
+              } else {
+                dbRecord[col] = val ? String(val).trim() : '';
+              }
+            } else {
+              // e-Lekha formatting
+              if (col === 'DDO Code' || col === 'TE Number') {
+                dbRecord[col] = val ? parseInt(String(val).replace(/\D/g, ''), 10) : null;
+              } else if (col === 'HOA') {
+                let hoaVal = '';
+                if (val !== undefined && val !== null && val !== '') {
+                  const num = Number(val);
+                  if (!isNaN(num)) {
+                    hoaVal = num.toFixed(0);
+                  } else {
+                    hoaVal = String(val).trim();
+                  }
+                }
+                if (hoaVal && /^\d+$/.test(hoaVal)) {
+                  hoaVal = hoaVal.padStart(15, '0');
+                }
+                dbRecord[col] = hoaVal.substring(0, 15);
+              } else if (col === 'Receipt (Rs.)' || col === 'Payment (Rs.)') {
+                dbRecord[col] = val ? String(val).trim() : '0';
+              } else {
+                dbRecord[col] = val ? String(val).trim() : '';
+              }
+            }
+          }
+        });
+        
+        return dbRecord;
+      });
+
+      // 3. Batch upload the formatted records in chunks of 500
+      const CHUNK_SIZE = 500;
+      const totalChunks = Math.ceil(formattedRows.length / CHUNK_SIZE);
+      
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = formattedRows.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        setSyncProgress(`Uploading batch ${i + 1} of ${totalChunks} (${chunk.length} rows)...`);
+        
+        const { error: insertError } = await supabase
+          .from(dbTable)
+          .insert(chunk);
+
+        if (insertError) {
+          throw new Error(`Failed to insert batch ${i + 1}: ${insertError.message}`);
+        }
+      }
+
+      // 4. Save report date metadata to Supabase
+      setSyncProgress('Saving report metadata...');
+      const { error: metaError } = await supabase
+        .from('report_metadata')
+        .upsert({ key: dbTable + '_report_date', value: syncReportDate });
+
+      if (metaError) {
+        throw new Error(`Failed to save report date metadata: ${metaError.message}`);
+      }
+
+      setSyncProgress('Upload complete! Finalizing synchronization...');
+      setSyncSuccess(true);
+      
+      // Clear sync states
+      setSyncFile(null);
+      setSyncHeaders([]);
+      setParsedRows([]);
+      setColumnMapping({});
+      setFileInputKey(Date.now());
+    } catch (err) {
+      console.error('Database Sync Error:', err);
+      setSyncError(`Sync failed: ${err.message || err}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Click handler to re-calculate vertical revenue matrix
+  const handleGenerate = () => {
+    setGeneratedConfig({
+      type: revenueType,
+      p1From,
+      p1To,
+      p2From,
+      p2To,
+      p1FromDate,
+      p1ToDate,
+      p2FromDate,
+      p2ToDate,
+      reportType,
+      groupBy
+    });
   };
 
   // CSV Export for Budget Report
@@ -1143,8 +2858,8 @@ export default function App() {
 
     categoriesOrder.forEach(cat => {
       const hoas = groupedHoas[cat] || [];
-      const clsRow = `${cat.toLowerCase()}-row`;
-      const clsTotal = `${cat.toLowerCase()}-total`;
+      const clsRow = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}`;
+      const clsTotal = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}-total`;
 
       // If Detail, show individual HOAs
       if (generatedConfig.reportType === 'Detail') {
@@ -1213,84 +2928,106 @@ export default function App() {
           <div className="seal-core">🪙</div>
         </div>
         <h2 className="loader-title">CEBAR</h2>
-        <p className="loader-subtitle">Consolidated Expenditure & Budget Analysis Report</p>
-        <p style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem', marginTop: '0.5rem' }}>Loading financial intelligence data...</p>
+        <p className="loader-subtitle">Reconciling Budget &amp; e-Lekha Ledgers…</p>
+        <div className="loader-progress-track">
+          <div className="loader-progress-fill"></div>
+        </div>
+        <div className="loader-steps">
+          <span>Budget</span>
+          <span className="loader-dot">•</span>
+          <span>e-Lekha</span>
+          <span className="loader-dot">•</span>
+          <span>Revenue Mapping</span>
+        </div>
       </div>
     );
   }
 
-  // Mandatory Login Gate
-  if (!currentUser) {
+  if (error) {
+    return (
+      <div className="dashboard-container" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
+        <div className="empty-state">
+          <AlertCircle size={48} style={{ color: 'var(--color-error)' }} />
+          <h2 style={{ color: 'var(--text-primary)' }}>Loading Failed</h2>
+          <p style={{ maxWidth: '500px' }}>{error}</p>
+          <button className="pg-btn" onClick={() => window.location.reload()} style={{ marginTop: '1.5rem' }}>
+            <RefreshCw size={16} /> Retry Reload
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
     return (
       <div style={{
-        minHeight: '100vh',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: isDarkMode ? 'var(--bg-primary)' : 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
-        padding: '1.5rem'
+        minHeight: '100vh',
+        backgroundColor: 'var(--bg-app)',
+        fontFamily: 'var(--font-sans)',
+        padding: '20px',
+        position: 'relative'
       }}>
-        <div className="card shadow-glass" style={{ width: '100%', maxWidth: '420px', padding: '2.5rem 2rem' }}>
-          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-            <div className="seal-loader" style={{ margin: '0 auto 1rem auto', width: '56px', height: '56px' }}>
-              <div className="seal-core" style={{ fontSize: '1.8rem' }}>🪙</div>
-            </div>
-            <h1 className="header-title" style={{ fontSize: '1.8rem' }}>CEBAR</h1>
-            <p className="header-subtitle" style={{ fontSize: '0.85rem' }}>Government of India Financial Portal</p>
-          </div>
+        <div style={{
+          width: '100%',
+          maxWidth: '450px',
+          backgroundColor: 'var(--bg-card)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '40px',
+          boxShadow: 'var(--shadow-premium)',
+          border: '1px solid var(--border-color)',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🪙</div>
+          <h1 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '1.8rem',
+            fontWeight: 800,
+            color: 'var(--text-primary)',
+            marginBottom: '10px'
+          }}>CEBAR</h1>
+          <p style={{
+            fontSize: '0.9rem',
+            color: 'var(--text-secondary)',
+            marginBottom: '30px',
+            lineHeight: '1.4'
+          }}>
+            Circle Expenditure, Budget and Accounting Review
+          </p>
 
-          <form onSubmit={handleLogin}>
-            {loginError && (
-              <div style={{
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                color: '#ef4444',
-                padding: '0.75rem',
-                borderRadius: '8px',
-                fontSize: '0.85rem',
-                marginBottom: '1.25rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}>
-                <AlertCircle size={16} />
-                <span>{loginError}</span>
-              </div>
-            )}
-
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
-                Username
-              </label>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>User ID</label>
               <div style={{ position: 'relative' }}>
-                <User size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-                <input
-                  type="text"
-                  className="filter-input"
-                  placeholder="Enter your username"
-                  value={loginUsername}
-                  onChange={(e) => setLoginUsername(e.target.value)}
-                  style={{ width: '100%', paddingLeft: '2.5rem' }}
+                <User size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type="text" 
+                  placeholder="Enter 8-digit User ID" 
+                  value={loginUserId}
+                  onChange={(e) => setLoginUserId(e.target.value.replace(/\D/g, '').substring(0, 8))}
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
                 />
               </div>
             </div>
 
-            <div style={{ marginBottom: '1.75rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
-                Password
-              </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Password</label>
               <div style={{ position: 'relative' }}>
-                <Lock size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  className="filter-input"
-                  placeholder="Enter your password"
+                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type={showPassword ? 'text' : 'password'} 
+                  placeholder="Enter Password" 
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
-                  style={{ width: '100%', paddingLeft: '2.5rem', paddingRight: '2.5rem' }}
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', paddingRight: '40px', width: '100%', height: '42px', boxSizing: 'border-box' }}
                 />
-                <button
-                  type="button"
+                <button 
+                  type="button" 
                   onClick={() => setShowPassword(!showPassword)}
                   style={{
                     position: 'absolute',
@@ -1299,1419 +3036,2686 @@ export default function App() {
                     transform: 'translateY(-50%)',
                     background: 'none',
                     border: 'none',
-                    color: 'var(--text-tertiary)',
-                    cursor: 'pointer'
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center'
                   }}
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
 
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.85rem', justifyContent: 'center', fontWeight: 600 }}>
-              Sign In to CEBAR
+            {loginError && (
+              <div style={{
+                color: 'var(--color-error)',
+                fontSize: '0.85rem',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                padding: '10px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <AlertTriangle size={16} />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              className="pg-btn" 
+              style={{
+                width: '100%',
+                height: '42px',
+                backgroundColor: 'var(--color-primary)',
+                color: '#14210f',
+                fontWeight: 'bold',
+                border: 'none',
+                marginTop: '10px'
+              }}
+            >
+              Sign In
             </button>
           </form>
+        </div>
 
-          <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)', textAlign: 'center' }}>
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="btn btn-secondary"
-              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', margin: '0 auto' }}
+        <div style={{
+          position: 'absolute',
+          bottom: '20px',
+          right: '20px',
+          fontSize: '0.75rem',
+          color: 'var(--text-muted)',
+          textAlign: 'right',
+          fontFamily: 'monospace',
+          maxWidth: '300px',
+          lineHeight: '1.4'
+        }}>
+          Desigend and developed by Vishal Gorvadiya, AAO, O/o The Cheif PMG, Ahd.
+        </div>
+      </div>
+    );
+  }
+
+  if (currentUser && currentUser.needs_password_change) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: 'var(--bg-app)',
+        fontFamily: 'var(--font-sans)',
+        padding: '20px',
+        position: 'relative'
+      }}>
+        <div style={{
+          width: '100%',
+          maxWidth: '450px',
+          backgroundColor: 'var(--bg-card)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '40px',
+          boxShadow: 'var(--shadow-premium)',
+          border: '1px solid var(--border-color)',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🔑</div>
+          <h1 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '1.5rem',
+            fontWeight: 800,
+            color: 'var(--text-primary)',
+            marginBottom: '10px'
+          }}>Change Password</h1>
+          <p style={{
+            fontSize: '0.85rem',
+            color: 'var(--text-secondary)',
+            marginBottom: '30px',
+            lineHeight: '1.4'
+          }}>
+            For security reasons, you are required to change your password from the default <strong>Ahd@12345</strong> before accessing the dashboard.
+          </p>
+
+          <form onSubmit={handlePasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>New Password</label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type="password" 
+                  placeholder="Enter New Password" 
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Confirm New Password</label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type="password" 
+                  placeholder="Confirm New Password" 
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            {passwordChangeError && (
+              <div style={{
+                color: 'var(--color-error)',
+                fontSize: '0.85rem',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                padding: '10px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <AlertTriangle size={16} />
+                <span>{passwordChangeError}</span>
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              className="pg-btn" 
+              style={{
+                width: '100%',
+                height: '42px',
+                backgroundColor: 'var(--color-primary)',
+                color: '#14210f',
+                fontWeight: 'bold',
+                border: 'none',
+                marginTop: '10px'
+              }}
             >
-              {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
-              <span>Toggle {isDarkMode ? 'Light' : 'Dark'} Mode</span>
+              Update Password
             </button>
-          </div>
+          </form>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
-      {/* Top Header */}
-      <header style={{
-        background: 'var(--bg-secondary)',
-        borderBottom: '1px solid var(--border-color)',
-        padding: '1rem 2rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        position: 'sticky',
-        top: 0,
-        zIndex: 50
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div className="seal-loader" style={{ width: '40px', height: '40px' }}>
-            <div className="seal-core" style={{ fontSize: '1.3rem' }}>🪙</div>
-          </div>
-          <div>
-            <h1 className="header-title" style={{ fontSize: '1.4rem', margin: 0 }}>CEBAR</h1>
-            <p className="header-subtitle" style={{ fontSize: '0.75rem', margin: 0 }}>Consolidated Expenditure & Budget Analysis Report</p>
-          </div>
+    <div className="dashboard-container">
+      
+      {/* 1. Header Area */}
+      <header className="dashboard-header">
+        <div className="header-left">
+          <h1>🪙 CEBAR - Circle Expenditure, Budget and Accounting Review</h1>
         </div>
-
-        {/* Header Right Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {/* User badge */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            background: 'var(--bg-card)',
-            padding: '0.4rem 0.8rem',
-            borderRadius: '20px',
-            border: '1px solid var(--border-color)',
-            fontSize: '0.85rem'
-          }}>
-            <User size={16} style={{ color: 'var(--accent-cyan)' }} />
-            <span style={{ fontWeight: 600 }}>{currentUser.username}</span>
-            <span style={{
-              fontSize: '0.7rem',
-              padding: '0.1rem 0.4rem',
-              borderRadius: '10px',
-              background: currentUser.role === 'admin' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.2)',
-              color: currentUser.role === 'admin' ? '#ef4444' : '#3b82f6',
-              fontWeight: 700,
-              textTransform: 'uppercase'
-            }}>
-              {currentUser.role}
-            </span>
-          </div>
-
-          <button
-            onClick={() => setShowChangePasswordModal(true)}
-            className="btn btn-secondary"
-            title="Change Password"
-            style={{ padding: '0.5rem' }}
+        <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          {currentUser && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem' }}>
+              <div 
+                className="user-badge-container" 
+                style={{ position: 'relative', display: 'inline-block' }}
+                onMouseEnter={() => setShowUserTooltip(true)}
+                onMouseLeave={() => setShowUserTooltip(false)}
+              >
+                <span className="user-badge" style={{
+                  backgroundColor: 'var(--bg-input)',
+                  border: '1px solid var(--border-color)',
+                  padding: '4px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  cursor: 'help'
+                }}>
+                  👤 {currentUser.name.toUpperCase()} ({currentUser.type})
+                </span>
+                
+                {showUserTooltip && (
+                  <div className="user-tooltip" style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '8px',
+                    backgroundColor: 'var(--bg-input)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '12px 16px',
+                    boxShadow: 'var(--shadow-premium)',
+                    zIndex: 2000,
+                    minWidth: '240px',
+                    textAlign: 'left',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    fontSize: '0.8rem',
+                    lineHeight: '1.4',
+                    color: 'var(--text-primary)'
+                  }}>
+                    <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '4px', marginBottom: '4px', fontWeight: 'bold', color: 'var(--color-primary)' }}>
+                      User Profile Details
+                    </div>
+                    <div><strong>User ID:</strong> {currentUser.user_id}</div>
+                    <div><strong>Name:</strong> {currentUser.name}</div>
+                    <div><strong>Mobile No:</strong> {currentUser.mobile_no || '–'}</div>
+                    <div><strong>Office:</strong> {currentUser.office || '–'}</div>
+                    <div><strong>Type:</strong> {currentUser.type === 'SA' ? 'Super Admin (SA)' : 'Reader (View)'}</div>
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={() => {
+                  setVCurrentPassword('');
+                  setVNewPassword('');
+                  setVConfirmNewPassword('');
+                  setVPasswordChangeError('');
+                  setShowChangePasswordModal(true);
+                }}
+                className="pg-btn"
+                style={{
+                  height: '32px',
+                  backgroundColor: 'var(--bg-input)',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer'
+                }}
+                title="Change Password"
+              >
+                <Key size={14} /> Change Password
+              </button>
+              <button 
+                onClick={handleLogout}
+                className="pg-btn"
+                style={{
+                  height: '32px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  color: 'var(--color-error)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer'
+                }}
+                title="Log Out"
+              >
+                <LogOut size={14} /> Logout
+              </button>
+            </div>
+          )}
+          <button 
+            className="theme-toggle-btn" 
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            title="Toggle Theme"
+            style={{ height: '32px', width: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
-            <Key size={16} />
-          </button>
-
-          <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className="btn btn-secondary"
-            title={`Switch to ${isDarkMode ? 'Light' : 'Dark'} Mode`}
-            style={{ padding: '0.5rem' }}
-          >
-            {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-
-          <button
-            onClick={handleLogout}
-            className="btn btn-danger"
-            title="Sign Out"
-            style={{ padding: '0.5rem 0.8rem', fontSize: '0.85rem' }}
-          >
-            <LogOut size={16} />
-            <span>Logout</span>
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
         </div>
       </header>
 
-      {/* Main Tab Navigation */}
-      <nav style={{
-        background: 'var(--bg-secondary)',
-        borderBottom: '1px solid var(--border-color)',
-        padding: '0 2rem',
-        display: 'flex',
-        gap: '0.5rem'
-      }}>
-        <button
-          className={`tab-btn ${activeTab === 'budget' ? 'active' : ''}`}
-          onClick={() => setActiveTab('budget')}
-        >
-          <BarChart2 size={16} />
-          <span>Budget Performance</span>
-        </button>
+      {/* 3. Global Control & Navigation Panel */}
+      <div className="controls-panel">
+        <div className="tab-navigation">
+          {hasRight('budget') && (
+            <button 
+              className={`tab-btn ${activeTab === 'budget' ? 'active' : ''}`}
+              onClick={() => setActiveTab('budget')}
+            >
+              <BarChart2 size={16} /> Budget Report
+            </button>
+          )}
+          {hasRight('elekha') && (
+            <button 
+              className={`tab-btn ${activeTab === 'elekha' ? 'active' : ''}`}
+              onClick={() => setActiveTab('elekha')}
+            >
+              <FileText size={16} /> e-Lekha Transactions
+            </button>
+          )}
+          {hasRight('revenue') && (
+            <button 
+              className={`tab-btn ${activeTab === 'revenue' ? 'active' : ''}`}
+              onClick={() => setActiveTab('revenue')}
+            >
+              <Coins size={16} /> Vertical Revenue
+            </button>
+          )}
+          {currentUser && currentUser.type === 'SA' && hasRight('users') && (
+            <button 
+              className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+              onClick={() => setActiveTab('users')}
+            >
+              <User size={16} /> User Management
+            </button>
+          )}
+          {currentUser && currentUser.type === 'SA' && hasRight('sync') && (
+            <button 
+              className={`tab-btn ${activeTab === 'sync' ? 'active' : ''}`}
+              onClick={() => setActiveTab('sync')}
+            >
+              <RefreshCw size={16} /> Database Sync
+            </button>
+          )}
+        </div>
 
-        <button
-          className={`tab-btn ${activeTab === 'elekha' ? 'active' : ''}`}
-          onClick={() => setActiveTab('elekha')}
-        >
-          <Coins size={16} />
-          <span>e-Lekha Transactions</span>
-        </button>
-
-        <button
-          className={`tab-btn ${activeTab === 'vertical' ? 'active' : ''}`}
-          onClick={() => setActiveTab('vertical')}
-        >
-          <TrendingUp size={16} />
-          <span>Vertical Revenue Report</span>
-        </button>
-
-        {currentUser.role === 'admin' && (
-          <button
-            className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveTab('settings')}
-          >
-            <User size={16} />
-            <span>User Management</span>
-          </button>
-        )}
-      </nav>
-
-      {/* Content Container */}
-      <main style={{ flex: 1, padding: '2rem', maxWidth: '1600px', width: '100%', margin: '0 auto' }}>
-        
-        {/* ========================================================= */}
-        {/* TAB 1: BUDGET PERFORMANCE DASHBOARD */}
-        {/* ========================================================= */}
-        {activeTab === 'budget' && (
-          <div>
-            {/* Header / Title */}
-            <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Budget Allotment & Consumption Analysis</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '0.25rem 0 0 0' }}>
-                  Monitoring APT vs e-Lekha expenditure across circles and Head of Account (HOA)
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button onClick={handleExportBudgetCSV} className="btn btn-secondary">
-                  <Download size={16} />
-                  <span>Export CSV</span>
-                </button>
-                <button onClick={handleExportBudgetExcel} className="btn btn-primary">
-                  <Download size={16} />
-                  <span>Export Excel</span>
-                </button>
-              </div>
-            </div>
-
-            {/* KPI Cards Grid */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-              gap: '1.25rem',
-              marginBottom: '1.5rem'
-            }}>
-              <div className="card shadow-glass">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', margin: 0 }}>Total APT Alloted</p>
-                    <h3 style={{ fontSize: '1.6rem', fontWeight: 700, margin: '0.4rem 0 0 0', color: 'var(--text-primary)' }}>
-                      {formatINR(budgetMetrics.totalAlloted)}
-                    </h3>
-                  </div>
-                  <div style={{ background: 'rgba(59, 130, 246, 0.15)', padding: '0.6rem', borderRadius: '12px', color: '#3b82f6' }}>
-                    <BarChart2 size={22} />
-                  </div>
-                </div>
-                <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Total budget allotted across filtered units
-                </div>
-              </div>
-
-              <div className="card shadow-glass">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', margin: 0 }}>APT Consumed</p>
-                    <h3 style={{ fontSize: '1.6rem', fontWeight: 700, margin: '0.4rem 0 0 0', color: '#10b981' }}>
-                      {formatINR(budgetMetrics.totalAptConsumed)}
-                    </h3>
-                  </div>
-                  <div style={{ background: 'rgba(16, 185, 129, 0.15)', padding: '0.6rem', borderRadius: '12px', color: '#10b981' }}>
-                    <TrendingUp size={22} />
-                  </div>
-                </div>
-                <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  <strong>{budgetMetrics.aptConsumedPct.toFixed(2)}%</strong> of allotted budget
-                </div>
-              </div>
-
-              <div className="card shadow-glass">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', margin: 0 }}>e-Lekha Consumed</p>
-                    <h3 style={{ fontSize: '1.6rem', fontWeight: 700, margin: '0.4rem 0 0 0', color: '#06b6d4' }}>
-                      {formatINR(budgetMetrics.totalElekhaConsumed)}
-                    </h3>
-                  </div>
-                  <div style={{ background: 'rgba(6, 182, 212, 0.15)', padding: '0.6rem', borderRadius: '12px', color: '#06b6d4' }}>
-                    <Coins size={22} />
-                  </div>
-                </div>
-                <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  <strong>{budgetMetrics.elekhaConsumedPct.toFixed(2)}%</strong> verified in e-Lekha
-                </div>
-              </div>
-
-              <div className="card shadow-glass">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', margin: 0 }}>Variance (APT - e-Lekha)</p>
-                    <h3 style={{
-                      fontSize: '1.6rem',
-                      fontWeight: 700,
-                      margin: '0.4rem 0 0 0',
-                      color: budgetMetrics.diff < 0 ? '#ef4444' : budgetMetrics.diff > 0 ? '#f59e0b' : 'var(--text-primary)'
-                    }}>
-                      {formatINR(budgetMetrics.diff)}
-                    </h3>
-                  </div>
-                  <div style={{
-                    background: budgetMetrics.diff < 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                    padding: '0.6rem',
-                    borderRadius: '12px',
-                    color: budgetMetrics.diff < 0 ? '#ef4444' : '#f59e0b'
-                  }}>
-                    <AlertTriangle size={22} />
-                  </div>
-                </div>
-                <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  {budgetMetrics.diff === 0 ? 'Fully reconciled' : budgetMetrics.diff > 0 ? 'Unbooked APT balance' : 'Excess e-Lekha booking'}
-                </div>
-              </div>
-            </div>
-
-            {/* Controls Bar */}
-            <div className="card shadow-glass" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
-                
-                {/* Search Input */}
-                <div style={{ flex: '1 1 280px', position: 'relative' }}>
-                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-                  <input
-                    type="text"
-                    className="filter-input"
-                    placeholder="Search by Office ID, Unit Name, HOA or Description..."
-                    value={budgetSearchTerm}
-                    onChange={(e) => {
-                      setBudgetSearchTerm(e.target.value);
-                      setBudgetPage(1);
-                    }}
-                    style={{ width: '100%', paddingLeft: '2.5rem' }}
-                  />
-                </div>
-
-                {/* Region Filter */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Region:</label>
-                  <select
-                    className="filter-select"
-                    value={budgetRegionFilter}
-                    onChange={(e) => {
-                      setBudgetRegionFilter(e.target.value);
-                      setBudgetPage(1);
-                    }}
-                  >
-                    <option value="ALL">All Regions</option>
-                    {budgetRegions.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </div>
-
-                {/* HOA Filter */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>HOA:</label>
-                  <select
-                    className="filter-select"
-                    value={budgetHoaFilter}
-                    onChange={(e) => {
-                      setBudgetHoaFilter(e.target.value);
-                      setBudgetPage(1);
-                    }}
-                  >
-                    <option value="ALL">All Head of Accounts (HOA)</option>
-                    {budgetHoas.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-
-                {/* Reset Filters */}
-                {(budgetRegionFilter !== 'ALL' || budgetHoaFilter !== 'ALL' || budgetSearchTerm !== '') && (
-                  <button
-                    onClick={() => {
-                      setBudgetRegionFilter('ALL');
-                      setBudgetHoaFilter('ALL');
-                      setBudgetSearchTerm('');
-                      setBudgetPage(1);
-                    }}
-                    className="btn btn-secondary"
-                    style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
-                  >
-                    <RefreshCw size={14} />
-                    <span>Reset</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Data Table */}
-            <div className="card shadow-glass" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Office ID</th>
-                      <th>Unit Name (HO/Division)</th>
-                      <th>Region</th>
-                      <th>HOA Code</th>
-                      <th>Description</th>
-                      <th style={{ textAlign: 'right' }}>APT Alloted (₹)</th>
-                      <th style={{ textAlign: 'right' }}>APT Consumed (₹)</th>
-                      <th style={{ textAlign: 'right' }}>e-Lekha Consumed (₹)</th>
-                      <th style={{ textAlign: 'right' }}>Diff (APT - e-Lekha)</th>
-                      <th style={{ textAlign: 'center' }}>APT %</th>
-                      <th style={{ textAlign: 'center' }}>e-Lekha %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedBudgetData.length === 0 ? (
-                      <tr>
-                        <td colSpan="11" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>
-                          No budget records match the selected filter criteria.
-                        </td>
-                      </tr>
-                    ) : (
-                      paginatedBudgetData.map((row, idx) => {
-                        const alloted = parseNumber(row['APT Alloted']);
-                        const aptCons = parseNumber(row['APT Consumed']);
-                        const elekhaCons = parseNumber(row['e-lekha Consumed']);
-                        const diff = parseNumber(row['Diff. (APT - e-Lekha)']);
-
-                        return (
-                          <tr key={idx}>
-                            <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{row['Office ID'] || '–'}</td>
-                            <td>{row['Name of Unit (HO/Division)'] || '–'}</td>
-                            <td>
-                              <span className="badge badge-info">{row.Region || '–'}</span>
-                            </td>
-                            <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-cyan)' }}>{row.HOA || '–'}</td>
-                            <td style={{ maxWidth: '300px', whiteSpace: 'normal' }}>{row.Description || '–'}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatIndianNumber(alloted)}</td>
-                            <td style={{ textAlign: 'right', color: '#10b981', fontWeight: 600 }}>{formatIndianNumber(aptCons)}</td>
-                            <td style={{ textAlign: 'right', color: '#06b6d4', fontWeight: 600 }}>{formatIndianNumber(elekhaCons)}</td>
-                            <td style={{
-                              textAlign: 'right',
-                              fontWeight: 700,
-                              color: diff < 0 ? '#ef4444' : diff > 0 ? '#f59e0b' : 'var(--text-primary)'
-                            }}>
-                              {formatIndianNumber(diff)}
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <span className={`badge ${parseNumber(row['APT Consumed %']) > 100 ? 'badge-danger' : 'badge-success'}`}>
-                                {row['APT Consumed %'] || '0.00%'}
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <span className="badge badge-info">
-                                {row['e-Lekha Consumed %'] || '0.00%'}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Table Footer Pagination */}
-              <div style={{
-                padding: '1rem 1.5rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                borderTop: '1px solid var(--border-color)',
-                background: 'var(--bg-secondary)',
-                flexWrap: 'wrap',
-                gap: '1rem'
-              }}>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  Showing <strong>{filteredBudgetData.length === 0 ? 0 : (budgetPage - 1) * budgetRowsPerPage + 1}</strong> to <strong>{Math.min(budgetPage * budgetRowsPerPage, filteredBudgetData.length)}</strong> of <strong>{filteredBudgetData.length}</strong> entries
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                    <span>Rows per page:</span>
-                    <select
-                      className="filter-select"
-                      value={budgetRowsPerPage}
-                      onChange={(e) => {
-                        setBudgetRowsPerPage(Number(e.target.value));
-                        setBudgetPage(1);
-                      }}
-                      style={{ padding: '0.25rem 0.5rem' }}
-                    >
-                      <option value={15}>15</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setBudgetPage(prev => Math.max(prev - 1, 1))}
-                      disabled={budgetPage === 1}
-                      style={{ padding: '0.4rem 0.6rem' }}
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                    <span style={{ fontSize: '0.85rem', padding: '0 0.5rem', fontWeight: 600 }}>
-                      Page {budgetPage} of {totalBudgetPages}
-                    </span>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setBudgetPage(prev => Math.min(prev + 1, totalBudgetPages))}
-                      disabled={budgetPage === totalBudgetPages}
-                      style={{ padding: '0.4rem 0.6rem' }}
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* TAB 2: e-LEKHA TRANSACTIONS DASHBOARD */}
-        {/* ========================================================= */}
+        {/* Global Search Inputs based on active Tab */}
         {activeTab === 'elekha' && (
-          <div>
-            {/* Header / Title */}
-            <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>e-Lekha Financial Ledger & Transactions</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '0.25rem 0 0 0' }}>
-                  Granular receipts and payments data retrieved from e-Lekha government portal
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button onClick={handleExportElekhaCSV} className="btn btn-secondary">
-                  <Download size={16} />
-                  <span>Export CSV</span>
-                </button>
-                <button onClick={handleExportElekhaExcel} className="btn btn-primary">
-                  <Download size={16} />
-                  <span>Export Excel</span>
-                </button>
-              </div>
-            </div>
-
-            {/* KPI Cards Grid */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-              gap: '1.25rem',
-              marginBottom: '1.5rem'
-            }}>
-              <div className="card shadow-glass">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', margin: 0 }}>Total Receipts</p>
-                    <h3 style={{ fontSize: '1.6rem', fontWeight: 700, margin: '0.4rem 0 0 0', color: '#10b981' }}>
-                      {formatINR(elekhaMetrics.totalReceipts)}
-                    </h3>
-                  </div>
-                  <div style={{ background: 'rgba(16, 185, 129, 0.15)', padding: '0.6rem', borderRadius: '12px', color: '#10b981' }}>
-                    <Coins size={22} />
-                  </div>
-                </div>
-                <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Total gross revenue receipts
-                </div>
-              </div>
-
-              <div className="card shadow-glass">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', margin: 0 }}>Total Payments</p>
-                    <h3 style={{ fontSize: '1.6rem', fontWeight: 700, margin: '0.4rem 0 0 0', color: '#ef4444' }}>
-                      {formatINR(elekhaMetrics.totalPayments)}
-                    </h3>
-                  </div>
-                  <div style={{ background: 'rgba(239, 68, 68, 0.15)', padding: '0.6rem', borderRadius: '12px', color: '#ef4444' }}>
-                    <BarChart2 size={22} />
-                  </div>
-                </div>
-                <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Total gross expenditure disbursements
-                </div>
-              </div>
-
-              <div className="card shadow-glass">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', margin: 0 }}>Net Financial Cash Flow</p>
-                    <h3 style={{
-                      fontSize: '1.6rem',
-                      fontWeight: 700,
-                      margin: '0.4rem 0 0 0',
-                      color: elekhaMetrics.netAmount >= 0 ? '#10b981' : '#ef4444'
-                    }}>
-                      {formatINR(elekhaMetrics.netAmount)}
-                    </h3>
-                  </div>
-                  <div style={{
-                    background: elekhaMetrics.netAmount >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                    padding: '0.6rem',
-                    borderRadius: '12px',
-                    color: elekhaMetrics.netAmount >= 0 ? '#10b981' : '#ef4444'
-                  }}>
-                    <TrendingUp size={22} />
-                  </div>
-                </div>
-                <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Receipts minus Payments balance
-                </div>
-              </div>
-
-              <div className="card shadow-glass">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', margin: 0 }}>Filtered Transactions</p>
-                    <h3 style={{ fontSize: '1.6rem', fontWeight: 700, margin: '0.4rem 0 0 0', color: 'var(--text-primary)' }}>
-                      {elekhaMetrics.totalTransactions.toLocaleString('en-IN')}
-                    </h3>
-                  </div>
-                  <div style={{ background: 'rgba(147, 51, 234, 0.15)', padding: '0.6rem', borderRadius: '12px', color: '#9333ea' }}>
-                    <FileText size={22} />
-                  </div>
-                </div>
-                <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Total ledger line entries
-                </div>
-              </div>
-            </div>
-
-            {/* Controls Bar */}
-            <div className="card shadow-glass" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
-                
-                {/* Search Input */}
-                <div style={{ flex: '1 1 280px', position: 'relative' }}>
-                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-                  <input
-                    type="text"
-                    className="filter-input"
-                    placeholder="Search TE Number, DDO, HO, Description, Remark..."
-                    value={elekhaSearchTerm}
-                    onChange={(e) => {
-                      setElekhaSearchTerm(e.target.value);
-                      setElekhaPage(1);
-                    }}
-                    style={{ width: '100%', paddingLeft: '2.5rem' }}
-                  />
-                </div>
-
-                {/* Region Filter */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Region:</label>
-                  <select
-                    className="filter-select"
-                    value={elekhaRegionFilter}
-                    onChange={(e) => {
-                      setElekhaRegionFilter(e.target.value);
-                      setElekhaPage(1);
-                    }}
-                  >
-                    <option value="ALL">All Regions</option>
-                    {elekhaRegions.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </div>
-
-                {/* DDO Code Filter */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>DDO Code:</label>
-                  <select
-                    className="filter-select"
-                    value={elekhaDdoFilter}
-                    onChange={(e) => {
-                      setElekhaDdoFilter(e.target.value);
-                      setElekhaPage(1);
-                    }}
-                  >
-                    <option value="ALL">All DDO Codes</option>
-                    {elekhaDdos.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                </div>
-
-                {/* HOA Filter */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>HOA:</label>
-                  <select
-                    className="filter-select"
-                    value={elekhaHoaFilter}
-                    onChange={(e) => {
-                      setElekhaHoaFilter(e.target.value);
-                      setElekhaPage(1);
-                    }}
-                  >
-                    <option value="ALL">All HOA Codes</option>
-                    {elekhaHoas.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-
-                {/* Reset Filters */}
-                {(elekhaRegionFilter !== 'ALL' || elekhaDdoFilter !== 'ALL' || elekhaHoaFilter !== 'ALL' || elekhaSearchTerm !== '') && (
-                  <button
-                    onClick={() => {
-                      setElekhaRegionFilter('ALL');
-                      setElekhaDdoFilter('ALL');
-                      setElekhaHoaFilter('ALL');
-                      setElekhaSearchTerm('');
-                      setElekhaPage(1);
-                    }}
-                    className="btn btn-secondary"
-                    style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
-                  >
-                    <RefreshCw size={14} />
-                    <span>Reset</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Data Table */}
-            <div className="card shadow-glass" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>TE Number</th>
-                      <th>Txn Date</th>
-                      <th>Month</th>
-                      <th>Region</th>
-                      <th>DDO Code</th>
-                      <th>HO</th>
-                      <th>Division</th>
-                      <th>HOA</th>
-                      <th>Description</th>
-                      <th style={{ textAlign: 'right' }}>Receipts (₹)</th>
-                      <th style={{ textAlign: 'right' }}>Payments (₹)</th>
-                      <th>Remark</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedElekhaData.length === 0 ? (
-                      <tr>
-                        <td colSpan="12" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>
-                          No e-Lekha transactions match the selected filter criteria.
-                        </td>
-                      </tr>
-                    ) : (
-                      paginatedElekhaData.map((row, idx) => {
-                        const rec = parseNumber(row['Receipt (Rs.)']);
-                        const pay = parseNumber(row['Payment (Rs.)']);
-
-                        return (
-                          <tr key={idx}>
-                            <td style={{ fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{row['TE Number'] || '–'}</td>
-                            <td style={{ whiteSpace: 'nowrap' }}>{row['Txn Date'] || '–'}</td>
-                            <td style={{ whiteSpace: 'nowrap' }}>{row['Month'] || '–'}</td>
-                            <td>
-                              <span className="badge badge-info">{row.Region || '–'}</span>
-                            </td>
-                            <td style={{ fontWeight: 600, color: 'var(--accent-cyan)' }}>{row['DDO Code'] || '–'}</td>
-                            <td>{row.HO || '–'}</td>
-                            <td>{row.Division || '–'}</td>
-                            <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{row.HOA || '–'}</td>
-                            <td style={{ maxWidth: '240px', whiteSpace: 'normal' }}>{row.Description || '–'}</td>
-                            <td style={{ textAlign: 'right', color: '#10b981', fontWeight: 600 }}>
-                              {rec > 0 ? formatIndianNumber(rec) : '–'}
-                            </td>
-                            <td style={{ textAlign: 'right', color: '#ef4444', fontWeight: 600 }}>
-                              {pay > 0 ? formatIndianNumber(pay) : '–'}
-                            </td>
-                            <td style={{ maxWidth: '180px', whiteSpace: 'normal', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                              {row.Remark || '–'}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Table Footer Pagination */}
-              <div style={{
-                padding: '1rem 1.5rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                borderTop: '1px solid var(--border-color)',
-                background: 'var(--bg-secondary)',
-                flexWrap: 'wrap',
-                gap: '1rem'
-              }}>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  Showing <strong>{filteredElekhaData.length === 0 ? 0 : (elekhaPage - 1) * elekhaRowsPerPage + 1}</strong> to <strong>{Math.min(elekhaPage * elekhaRowsPerPage, filteredElekhaData.length)}</strong> of <strong>{filteredElekhaData.length}</strong> entries
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                    <span>Rows per page:</span>
-                    <select
-                      className="filter-select"
-                      value={elekhaRowsPerPage}
-                      onChange={(e) => {
-                        setElekhaRowsPerPage(Number(e.target.value));
-                        setElekhaPage(1);
-                      }}
-                      style={{ padding: '0.25rem 0.5rem' }}
-                    >
-                      <option value={15}>15</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setElekhaPage(prev => Math.max(prev - 1, 1))}
-                      disabled={elekhaPage === 1}
-                      style={{ padding: '0.4rem 0.6rem' }}
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                    <span style={{ fontSize: '0.85rem', padding: '0 0.5rem', fontWeight: 600 }}>
-                      Page {elekhaPage} of {totalElekhaPages}
-                    </span>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setElekhaPage(prev => Math.min(prev + 1, totalElekhaPages))}
-                      disabled={elekhaPage === totalElekhaPages}
-                      style={{ padding: '0.4rem 0.6rem' }}
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
+          <div className="filters-row">
+            <div className="input-group">
+              <Search className="input-icon" size={16} />
+              <input 
+                type="text" 
+                placeholder="Search Region, DDO, HO, Division, HOA, Description..." 
+                className="custom-input"
+                value={elekhaSearch}
+                onChange={(e) => {
+                  setElekhaSearch(e.target.value);
+                  setElekhaPage(0);
+                }}
+                style={{ minWidth: '350px' }}
+              />
             </div>
           </div>
         )}
 
-        {/* ========================================================= */}
-        {/* TAB 3: VERTICAL REVENUE REPORT (MATRIX) */}
-        {/* ========================================================= */}
-        {activeTab === 'vertical' && (
-          <div>
-            {/* Header / Title */}
-            <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Vertical Revenue Comparison Report</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '0.25rem 0 0 0' }}>
-                  Cross-period vertical revenue matrix categorized by HOA (CCS, FS, IRGB, MO, Parcel) across units
-                </p>
+        {activeTab === 'budget' && (
+          <div className="filters-row">
+            <div className="input-group">
+              <Search className="input-icon" size={16} />
+              <input 
+                type="text" 
+                placeholder="Search Office ID, Name of Unit, Region, HOA, Description..." 
+                className="custom-input"
+                value={budgetSearch}
+                onChange={(e) => {
+                  setBudgetSearch(e.target.value);
+                  setBudgetPage(0);
+                }}
+                style={{ minWidth: '350px' }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 4. KPI Summaries Bar */}
+      {activeTab === 'elekha' && (
+        <div className="kpi-grid">
+          <div className="kpi-card">
+            <div className="kpi-info">
+              <h4>Total Receipts (Revenue)</h4>
+              <div className="kpi-value">{formatINR(elekhaKpis.totalReceipts)}</div>
+            </div>
+            <div className="kpi-icon-container allotted">
+              <TrendingUp size={20} />
+            </div>
+          </div>
+          <div className="kpi-card">
+            <div className="kpi-info">
+              <h4>Total Payments (Expenditure)</h4>
+              <div className="kpi-value">{formatINR(elekhaKpis.totalPayments)}</div>
+            </div>
+            <div className="kpi-icon-container consumed">
+              <Coins size={20} />
+            </div>
+          </div>
+          <div className="kpi-card">
+            <div className="kpi-info">
+              <h4>Diff (Revenue - Expenditure)</h4>
+              <div className="kpi-value" style={{ color: elekhaKpis.diff < 0 ? 'var(--color-error)' : 'var(--color-success)' }}>
+                {formatINR(elekhaKpis.diff)}
               </div>
-              
-              {generatedConfig && (
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <button onClick={handleExportCSV} className="btn btn-secondary">
-                    <Download size={16} />
-                    <span>Export CSV</span>
-                  </button>
-                  <button onClick={handleExportExcel} className="btn btn-primary">
-                    <Download size={16} />
-                    <span>Export Excel</span>
-                  </button>
+            </div>
+            <div className="kpi-icon-container remaining">
+              <CheckCircle size={20} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Main Card Content Area */}
+      <main className="main-card">
+        
+        {/* Tab 1: Budget Report View (As per budget report.csv) */}
+        {activeTab === 'budget' && (
+          <>
+            {/* Budget Summary Bar */}
+            <div className="budget-summary-bar">
+              <div className="budget-summary-card">
+                <h5>Total APT Allotted</h5>
+                <div className="value">{formatINR(budgetKpis.allotted)}</div>
+              </div>
+              <div className="budget-summary-card">
+                <h5>Total APT Consumed</h5>
+                <div className="value">{formatINR(budgetKpis.consumedAPT)}</div>
+              </div>
+              <div className="budget-summary-card">
+                <h5>Total e-Lekha Consumed</h5>
+                <div className="value">{formatINR(budgetKpis.consumedElekha)}</div>
+              </div>
+              <div className="budget-summary-card">
+                <h5>Total Diff (APT - e-Lekha)</h5>
+                <div className="value" style={{ color: budgetKpis.diff < 0 ? 'var(--color-error)' : 'inherit' }}>
+                  {formatINR(budgetKpis.diff)}
                 </div>
-              )}
+              </div>
+              <div className="budget-summary-card rate">
+                <h5>APT Util. Rate</h5>
+                <div className="value">{budgetKpis.aptUtil.toFixed(1)}%</div>
+              </div>
+              <div className="budget-summary-card rate">
+                <h5>e-Lekha Util. Rate</h5>
+                <div className="value">{budgetKpis.elekhaUtil.toFixed(1)}%</div>
+              </div>
+              <div className="budget-summary-card report-date">
+                <h5>Report Date</h5>
+                <div className="value">{formatReportDate(budgetReportDate)}</div>
+              </div>
             </div>
 
-            {/* Setup Control Panel Card */}
-            <div className="card shadow-glass" style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
-                Report Parameters & Period Setup
-              </h3>
+            {/* Percentage Search & Global filters bar */}
+            <div className="pct-search-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Filter by % Consumed:</span>
+                <select 
+                  className="custom-select" 
+                  value={pctSearchType} 
+                  onChange={(e) => setPctSearchType(e.target.value)}
+                  style={{ padding: '4px 8px', fontSize: '0.8rem', minWidth: '150px', height: '32px' }}
+                >
+                  <option value="apt">APT Consumed %</option>
+                  <option value="elekha">e-Lekha Consumed %</option>
+                </select>
+                <input 
+                  type="text" 
+                  placeholder="e.g. 85" 
+                  value={pctSearchVal}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, ''); // only digits
+                    if (val.length <= 3) {
+                      setPctSearchVal(val);
+                      setBudgetPage(0);
+                    }
+                  }}
+                  style={{
+                    width: '70px',
+                    padding: '4px 8px',
+                    fontSize: '0.8rem',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-input)',
+                    color: 'var(--text-primary)',
+                    height: '32px',
+                    textAlign: 'center'
+                  }}
+                />
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>% or more</span>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
-                
-                {/* 1. Comparison Mode Toggle */}
-                <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>
-                    1. Comparison Type
-                  </label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      type="button"
-                      className={`btn ${comparisonType === 'Month' ? 'btn-primary' : 'btn-secondary'}`}
-                      onClick={() => setComparisonType('Month')}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                    >
-                      Month Range
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn ${comparisonType === 'DateRange' ? 'btn-primary' : 'btn-secondary'}`}
-                      onClick={() => setComparisonType('DateRange')}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                    >
-                      Custom Dates
-                    </button>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  className={`pg-btn ${isAnalysisMode ? 'active' : ''}`}
+                  onClick={() => {
+                    setIsAnalysisMode(!isAnalysisMode);
+                    setSelectedAnalysisType('all');
+                    if (isChartMode) setIsChartMode(false);
+                  }}
+                  style={{
+                    height: '32px',
+                    padding: '0 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 'bold',
+                    backgroundColor: isAnalysisMode ? 'var(--color-primary)' : 'var(--bg-input)',
+                    color: isAnalysisMode ? '#14210f' : 'var(--text-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    marginLeft: '8px'
+                  }}
+                >
+                  <AlertTriangle size={14} /> Analysis
+                </button>
 
-                {/* 2. Region & HO Unit Selector */}
-                <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>
-                    2. Region Filter
-                  </label>
-                  <select
-                    className="filter-select"
-                    value={selectedRegion}
-                    onChange={(e) => {
-                      setSelectedRegion(e.target.value);
-                      setSelectedUnits([]); // Reset selected units
-                    }}
-                    style={{ width: '100%' }}
+                <button
+                  type="button"
+                  className={`pg-btn ${isChartMode ? 'active' : ''}`}
+                  onClick={() => {
+                    setIsChartMode(!isChartMode);
+                    if (isAnalysisMode) setIsAnalysisMode(false);
+                  }}
+                  style={{
+                    height: '32px',
+                    padding: '0 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 'bold',
+                    backgroundColor: isChartMode ? 'var(--color-primary)' : 'var(--bg-input)',
+                    color: isChartMode ? '#14210f' : 'var(--text-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)'
+                  }}
+                >
+                  <BarChart2 size={14} /> Chart
+                </button>
+              </div>
+
+              {/* Status & Region filters */}
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Region:</span>
+                  <select 
+                    value={budgetRegion} 
+                    onChange={(e) => { setBudgetRegion(e.target.value); setBudgetPage(0); }}
+                    className="custom-select"
+                    style={{ padding: '4px 8px', fontSize: '0.8rem', height: '32px' }}
                   >
-                    <option value="ALL">All Regions</option>
-                    {verticalRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                    <option value="All">All Regions</option>
+                    {uniqueRegions.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Status:</span>
+                  <select 
+                    value={budgetFilterStatus} 
+                    onChange={(e) => { setBudgetFilterStatus(e.target.value); setBudgetPage(0); }}
+                    className="custom-select"
+                    style={{ padding: '4px 8px', fontSize: '0.8rem', height: '32px' }}
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="Over">Over Budget (&gt; 100%)</option>
+                    <option value="Warning">Warning (85% - 100%)</option>
+                    <option value="Safe">Safe (&lt; 85%)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
 
-                {/* 3. Detail vs Summary Type */}
-                <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>
-                    3. Report Format
-                  </label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      type="button"
-                      className={`btn ${reportType === 'Detail' ? 'btn-primary' : 'btn-secondary'}`}
-                      onClick={() => setReportType('Detail')}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                    >
-                      Detail (HOA Wise)
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn ${reportType === 'Summary' ? 'btn-primary' : 'btn-secondary'}`}
-                      onClick={() => setReportType('Summary')}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                    >
-                      Summary Only
-                    </button>
+            {/* Analysis Collapsible Panel */}
+            {isAnalysisMode && (
+              <div 
+                className="analysis-panel" 
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                  gap: '1.25rem',
+                  marginTop: '1rem',
+                  padding: '1.25rem',
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)'
+                }}
+              >
+                {/* Over-Utilized card */}
+                <div 
+                  className={`analysis-card ${selectedAnalysisType === 'over' ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedAnalysisType(selectedAnalysisType === 'over' ? 'all' : 'over');
+                    setBudgetPage(0);
+                  }}
+                  style={{
+                    backgroundColor: selectedAnalysisType === 'over' ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-card)',
+                    border: selectedAnalysisType === 'over' ? '2px solid var(--color-error)' : '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '1rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h4 style={{ color: 'var(--color-error)', fontWeight: 700, margin: 0 }}>Over-Utilized Units</h4>
+                    <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--color-error-bg)', color: 'var(--color-error)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                      {analysisStats.overCount} Units
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 10px 0' }}>
+                    Units where APT Consumed is &gt; 100% of APT Allotted.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                    <span>Allotted: <strong>{formatINR(analysisStats.overAllotted)}</strong></span>
+                    <span>Consumed: <strong>{formatINR(analysisStats.overConsumed)}</strong></span>
                   </div>
                 </div>
 
-              </div>
-
-              {/* Period selection inputs */}
-              <div style={{
-                marginTop: '1.25rem',
-                paddingTop: '1.25rem',
-                borderTop: '1px dashed var(--border-color)',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                gap: '1.5rem'
-              }}>
-                {/* Period 1 selection */}
-                <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span>Period 1 (P1) Range</span>
-                  </h4>
-                  {comparisonType === 'Month' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                      <div>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>From Month:</label>
-                        <input type="month" className="filter-input" value={p1FromMonth} onChange={e => setP1FromMonth(e.target.value)} style={{ width: '100%' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>To Month:</label>
-                        <input type="month" className="filter-input" value={p1ToMonth} onChange={e => setP1ToMonth(e.target.value)} style={{ width: '100%' }} />
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                      <div>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>From Date:</label>
-                        <input type="date" className="filter-input" value={p1FromDate} onChange={e => setP1FromDate(e.target.value)} style={{ width: '100%' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>To Date:</label>
-                        <input type="date" className="filter-input" value={p1ToDate} onChange={e => setP1ToDate(e.target.value)} style={{ width: '100%' }} />
-                      </div>
-                    </div>
-                  )}
+                {/* Under-Utilized card */}
+                <div 
+                  className={`analysis-card ${selectedAnalysisType === 'under' ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedAnalysisType(selectedAnalysisType === 'under' ? 'all' : 'under');
+                    setBudgetPage(0);
+                  }}
+                  style={{
+                    backgroundColor: selectedAnalysisType === 'under' ? 'rgba(249, 115, 22, 0.15)' : 'var(--bg-card)',
+                    border: selectedAnalysisType === 'under' ? '2px solid var(--color-warning)' : '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '1rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h4 style={{ color: 'var(--color-warning)', fontWeight: 700, margin: 0 }}>Not Utilized (0% - 20%)</h4>
+                    <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--color-warning-bg)', color: 'var(--color-warning)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                      {analysisStats.underCount} Units
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 10px 0' }}>
+                    Units where utilization is between 0% and 20% of allotment.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                    <span>Allotted: <strong>{formatINR(analysisStats.underAllotted)}</strong></span>
+                    <span>Consumed: <strong>{formatINR(analysisStats.underConsumed)}</strong></span>
+                  </div>
                 </div>
 
-                {/* Period 2 selection */}
-                <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span>Period 2 (P2) Range</span>
-                  </h4>
-                  {comparisonType === 'Month' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                      <div>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>From Month:</label>
-                        <input type="month" className="filter-input" value={p2FromMonth} onChange={e => setP2FromMonth(e.target.value)} style={{ width: '100%' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>To Month:</label>
-                        <input type="month" className="filter-input" value={p2ToMonth} onChange={e => setP2ToMonth(e.target.value)} style={{ width: '100%' }} />
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                      <div>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>From Date:</label>
-                        <input type="date" className="filter-input" value={p2FromDate} onChange={e => setP2FromDate(e.target.value)} style={{ width: '100%' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>To Date:</label>
-                        <input type="date" className="filter-input" value={p2ToDate} onChange={e => setP2ToDate(e.target.value)} style={{ width: '100%' }} />
-                      </div>
-                    </div>
-                  )}
+                {/* Consumed without Allotment card */}
+                <div 
+                  className={`analysis-card ${selectedAnalysisType === 'no_allotment' ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedAnalysisType(selectedAnalysisType === 'no_allotment' ? 'all' : 'no_allotment');
+                    setBudgetPage(0);
+                  }}
+                  style={{
+                    backgroundColor: selectedAnalysisType === 'no_allotment' ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-card)',
+                    border: selectedAnalysisType === 'no_allotment' ? '2px solid var(--color-info)' : '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '1rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h4 style={{ color: 'var(--color-info)', fontWeight: 700, margin: 0 }}>Consumed Without Allotment</h4>
+                    <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--color-info-bg)', color: 'var(--color-info)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                      {analysisStats.noAllotCount} Units
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 10px 0' }}>
+                    Units where e-Lekha expenditure exists without any budget allotment.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                    <span>e-Lekha Consumed: <strong>{formatINR(analysisStats.noAllotConsumed)}</strong></span>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Specific HO Multi-select Filter */}
-              <div style={{ marginTop: '1.25rem' }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>
-                  Filter Specific Head Offices (HO) (Optional - leave unchecked for ALL):
-                </label>
-                <div style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '0.5rem',
-                  maxHeight: '110px',
-                  overflowY: 'auto',
-                  padding: '0.5rem',
-                  background: 'var(--bg-secondary)',
-                  borderRadius: '6px',
-                  border: '1px solid var(--border-color)'
-                }}>
-                  {availableUnitsForRegion.map(unit => {
-                    const isChecked = selectedUnits.includes(unit);
-                    return (
+            {/* Chart Collapsible Panel */}
+            {isChartMode && budgetChartData.length > 0 && (
+              <div 
+                className="chart-panel" 
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '1.5rem',
+                  marginTop: '1rem'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Group By</label>
+                      <select 
+                        className="custom-select" 
+                        value={selectedChartGroupBy} 
+                        onChange={(e) => {
+                          setSelectedChartGroupBy(e.target.value);
+                          if (e.target.value === 'status') {
+                            setSelectedChartType('pie'); // default status to pie
+                          }
+                        }}
+                        style={{ height: '32px', minWidth: '120px', padding: '2px 8px', fontSize: '0.8rem' }}
+                      >
+                        <option value="region">Region</option>
+                        <option value="status">Status</option>
+                        <option value="hoa">HOA Code (Top 10)</option>
+                      </select>
+                    </div>
+
+                    {selectedChartGroupBy !== 'status' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Metric</label>
+                        <select 
+                          className="custom-select" 
+                          value={selectedChartMetric} 
+                          onChange={(e) => setSelectedChartMetric(e.target.value)}
+                          style={{ height: '32px', minWidth: '180px', padding: '2px 8px', fontSize: '0.8rem' }}
+                        >
+                          <option value="consumed">APT Consumed vs Allotted</option>
+                          <option value="alloted">APT Allotted Only</option>
+                          <option value="elekha">e-Lekha Consumed Only</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', alignSelf: 'flex-end' }}>
+                    {['pie', 'bar', 'line'].map(t => (
                       <button
-                        type="button"
-                        key={unit}
-                        onClick={() => {
-                          if (isChecked) {
-                            setSelectedUnits(selectedUnits.filter(u => u !== unit));
-                          } else {
-                            setSelectedUnits([...selectedUnits, unit]);
+                        key={t}
+                        onClick={() => setSelectedChartType(t)}
+                        className={`pg-btn ${selectedChartType === t ? 'active' : ''}`}
+                        style={{
+                          height: '30px',
+                          padding: '0 12px',
+                          fontSize: '0.8rem',
+                          backgroundColor: selectedChartType === t ? 'var(--color-primary)' : 'var(--bg-input)'
+                        }}
+                      >
+                        {t.toUpperCase()} CHART
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedChartType === 'pie' ? (
+                  <SVGPieChart 
+                    data={budgetChartData} 
+                    colors={['#c9a227', '#1f6f5c', '#a97e1f', '#4c7ea8', '#8a6d2f', '#2f9e6b', '#b08d3e', '#5c8ca0', '#d99a3d', '#6f8f7c']} 
+                  />
+                ) : selectedChartType === 'bar' ? (
+                  <SVGBarChart 
+                    data={budgetChartData} 
+                    colors={['#c9a227', '#1f6f5c']} 
+                  />
+                ) : (
+                  <SVGLineChart 
+                    data={budgetChartData} 
+                    colors={['#c9a227', '#1f6f5c']} 
+                  />
+                )}
+                {selectedChartType !== 'pie' && selectedChartGroupBy !== 'status' && selectedChartMetric === 'consumed' && (
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '15px', fontSize: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#c9a227', borderRadius: '2px' }}></span>
+                      <span>APT Consumed</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#1f6f5c', borderRadius: '2px' }}></span>
+                      <span>APT Allotted</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="card-title-row" style={{ marginTop: '1rem' }}>
+              <h2>Office Budget Utilization Summary</h2>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                Loaded <strong>{filteredBudgetData.length}</strong> matching records from <code>budget report.csv</code>
+              </div>
+            </div>
+
+            <div className="table-wrapper top-scrollbar">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Office ID" 
+                        columnName="Office ID" 
+                        allValues={getFilteredDataForColumn('Office ID').map(d => d['Office ID'])} 
+                        selectedFilters={budgetColumnFilters['Office ID']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Name of Unit (HO/Division)" 
+                        columnName="Name of Unit (HO/Division)" 
+                        allValues={getFilteredDataForColumn('Name of Unit (HO/Division)').map(d => d['Name of Unit (HO/Division)'])} 
+                        selectedFilters={budgetColumnFilters['Name of Unit (HO/Division)']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Region" 
+                        columnName="Region" 
+                        allValues={getFilteredDataForColumn('Region').map(d => d.Region)} 
+                        selectedFilters={budgetColumnFilters.Region} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="HOA" 
+                        columnName="HOA" 
+                        allValues={getFilteredDataForColumn('HOA').map(d => d.HOA)} 
+                        selectedFilters={budgetColumnFilters.HOA} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Description" 
+                        columnName="Description" 
+                        allValues={getFilteredDataForColumn('Description').map(d => d.Description)} 
+                        selectedFilters={budgetColumnFilters.Description} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="APT Alloted" 
+                        columnName="APT Alloted" 
+                        allValues={getFilteredDataForColumn('APT Alloted').map(d => String(d['APT Alloted'] || 0))} 
+                        selectedFilters={budgetColumnFilters['APT Alloted']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="APT Consumed" 
+                        columnName="APT Consumed" 
+                        allValues={getFilteredDataForColumn('APT Consumed').map(d => String(d['APT Consumed'] || 0))} 
+                        selectedFilters={budgetColumnFilters['APT Consumed']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="e-Lekha Consumed" 
+                        columnName="e-lekha Consumed" 
+                        allValues={getFilteredDataForColumn('e-lekha Consumed').map(d => String(d['e-lekha Consumed'] || 0))} 
+                        selectedFilters={budgetColumnFilters['e-lekha Consumed']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="Diff. (APT - e-Lekha)" 
+                        columnName="Diff. (APT - e-Lekha)" 
+                        allValues={getFilteredDataForColumn('Diff. (APT - e-Lekha)').map(d => String(d['Diff. (APT - e-Lekha)'] || 0))} 
+                        selectedFilters={budgetColumnFilters['Diff. (APT - e-Lekha)']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="APT Consumed %" 
+                        columnName="APT Consumed %" 
+                        allValues={getFilteredDataForColumn('APT Consumed %').map(d => typeof d['APT Consumed %'] === 'number' ? d['APT Consumed %'].toFixed(2) : String(d['APT Consumed %']))} 
+                        selectedFilters={budgetColumnFilters['APT Consumed %']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="e-Lekha Consumed %" 
+                        columnName="e-Lekha Consumed %" 
+                        allValues={getFilteredDataForColumn('e-Lekha Consumed %').map(d => typeof d['e-Lekha Consumed %'] === 'number' ? d['e-Lekha Consumed %'].toFixed(2) : String(d['e-Lekha Consumed %']))} 
+                        selectedFilters={budgetColumnFilters['e-Lekha Consumed %']} 
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBudgetData.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="text-center" style={{ padding: '3rem', color: 'var(--text-secondary)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <AlertCircle size={24} style={{ color: 'var(--color-warning)' }} />
+                          <span style={{ fontWeight: 600 }}>No budget records matching the active filters.</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedBudgetData.map((row, idx) => {
+                      const pct = row['APT Consumed %'] || 0;
+                      let statusColor = 'inherit';
+                      if (pct > 100) {
+                        statusColor = 'var(--color-error)';
+                      } else if (pct >= 85) {
+                        statusColor = 'var(--color-warning)';
+                      }
+
+                      const rowKey = `${row['Office ID']}_${row['HOA']}`;
+                      const isExpanded = !!expandedBudgetRows[rowKey];
+                      const eLekhaTxns = elekhaLookupMap[`${String(row['Name of Unit (HO/Division)']).trim().toLowerCase()}_${String(row['HOA']).trim()}`]?.txns || [];
+
+                      return (
+                        <React.Fragment key={rowKey}>
+                          <tr>
+                            <td>
+                              {eLekhaTxns.length > 0 ? (
+                                <button 
+                                  onClick={() => setExpandedBudgetRows(prev => ({ ...prev, [rowKey]: !isExpanded }))} 
+                                  className="expand-btn"
+                                  title="Toggle transactions view"
+                                >
+                                  {isExpanded ? '−' : '+'}
+                                </button>
+                              ) : (
+                                <span style={{ display: 'inline-block', width: '30px' }}></span>
+                              )}
+                              <code>{row['Office ID'] || '–'}</code>
+                            </td>
+                            <td><strong>{row['Name of Unit (HO/Division)'] || '–'}</strong></td>
+                            <td>{row['Region'] || '–'}</td>
+                            <td><code>{row['HOA'] || '–'}</code></td>
+                            <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.Description}>
+                              {row.Description || '–'}
+                            </td>
+                            <td className="text-right">{formatTableValue(row['APT Alloted'])}</td>
+                            <td className="text-right" style={{ fontWeight: 500 }}>{formatTableValue(row['APT Consumed'])}</td>
+                            <td className="text-right" style={{ fontWeight: 500, color: 'var(--color-primary)' }}>{formatTableValue(row['e-lekha Consumed'])}</td>
+                            <td className="text-right" style={{ color: row['Diff. (APT - e-Lekha)'] < 0 ? 'var(--color-error)' : 'inherit' }}>
+                              {formatTableValue(row['Diff. (APT - e-Lekha)'])}
+                            </td>
+                            <td className="text-right" style={{ fontWeight: 600, color: statusColor }}>
+                              {typeof row['APT Consumed %'] === 'number' ? (row['APT Consumed %'].toFixed(2) + '%') : row['APT Consumed %']}
+                            </td>
+                            <td className="text-right" style={{ fontWeight: 600 }}>
+                              {typeof row['e-Lekha Consumed %'] === 'number' ? (row['e-Lekha Consumed %'].toFixed(2) + '%') : row['e-Lekha Consumed %']}
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="expanded-row">
+                              <td colSpan={11}>
+                                <div className="expanded-content">
+                                  <h4>e-Lekha Transactions Breakdown ({eLekhaTxns.length} records)</h4>
+                                  <table className="expanded-table">
+                                    <thead>
+                                      <tr>
+                                        <th>Txn Date</th>
+                                        <th>Month</th>
+                                        <th>Description</th>
+                                        <th className="text-right">Payment Amount (Rs.)</th>
+                                        <th>Remark</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {eLekhaTxns.map((txn, tIdx) => (
+                                        <tr key={tIdx}>
+                                          <td>{txn['Txn Date'] || '–'}</td>
+                                          <td>{txn['Month'] || '–'}</td>
+                                          <td>{txn['Description'] || '–'}</td>
+                                          <td className="text-right" style={{ color: 'var(--color-warning)', fontWeight: 600 }}>
+                                            {txn['Payment (Rs.)'] || '–'}
+                                          </td>
+                                          <td>{txn['Remark'] || '–'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination and Exports */}
+            {filteredBudgetData.length > 0 && (
+              <div className="pagination-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {/* Bottom Left Exports */}
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button 
+                    onClick={handleExportBudgetCSV} 
+                    className="pg-btn" 
+                    style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', fontWeight: 600 }}
+                  >
+                    <Download size={14} /> Export to CSV
+                  </button>
+                  <button 
+                    onClick={handleExportBudgetExcel} 
+                    className="pg-btn" 
+                    style={{ backgroundColor: '#22c55e', color: 'white', border: 'none', fontWeight: 600 }}
+                  >
+                    <Download size={14} /> Export to Excel
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <div className="pagination-info">
+                    Showing <strong>{budgetPage * budgetRowsPerPage + 1}</strong> to <strong>{Math.min((budgetPage + 1) * budgetRowsPerPage, filteredBudgetData.length)}</strong> of <strong>{filteredBudgetData.length}</strong> records
+                  </div>
+                  <select 
+                    className="custom-select" 
+                    value={budgetRowsPerPage} 
+                    onChange={(e) => {
+                      setBudgetRowsPerPage(parseInt(e.target.value, 10));
+                      setBudgetPage(0);
+                    }}
+                    style={{ padding: '0.4rem 2rem 0.4rem 1rem', minWidth: '80px' }}
+                  >
+                    <option value="25">25 rows</option>
+                    <option value="50">50 rows</option>
+                    <option value="100">100 rows</option>
+                  </select>
+
+                  <div className="pagination-buttons" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button 
+                      className="pg-btn" 
+                      disabled={budgetPage === 0} 
+                      onClick={() => setBudgetPage(prev => Math.max(prev - 1, 0))}
+                    >
+                      <ChevronLeft size={16} /> Prev
+                    </button>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Page:</span>
+                      <input 
+                        type="text" 
+                        className="custom-input" 
+                        value={budgetPageInput} 
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, ''); // only digits
+                          setBudgetPageInput(val);
+                          if (val) {
+                            const pNum = parseInt(val, 10) - 1;
+                            const maxPage = Math.ceil(filteredBudgetData.length / budgetRowsPerPage) - 1;
+                            if (pNum >= 0 && pNum <= maxPage) {
+                              setBudgetPage(pNum);
+                            }
                           }
                         }}
                         style={{
-                          padding: '0.25rem 0.6rem',
-                          borderRadius: '14px',
-                          fontSize: '0.8rem',
-                          border: isChecked ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                          background: isChecked ? 'rgba(6, 182, 212, 0.2)' : 'var(--bg-card)',
-                          color: isChecked ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-                          cursor: 'pointer'
+                          width: '45px',
+                          padding: '4px 6px',
+                          borderRadius: '4px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--bg-input)',
+                          color: 'var(--text-primary)',
+                          height: '30px',
+                          textAlign: 'center',
+                          fontSize: '0.85rem'
                         }}
-                      >
-                        {unit} {isChecked ? '✓' : ''}
-                      </button>
-                    );
-                  })}
+                      />
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/ {Math.ceil(filteredBudgetData.length / budgetRowsPerPage)}</span>
+                    </div>
+
+                    <button 
+                      className="pg-btn" 
+                      disabled={(budgetPage + 1) * budgetRowsPerPage >= filteredBudgetData.length} 
+                      onClick={() => setBudgetPage(prev => prev + 1)}
+                    >
+                      Next <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Tab 2: e-Lekha transactions list view */}
+        {activeTab === 'elekha' && (
+          <>
+            <div className="card-title-row elekha-title-row">
+              <h2>e-Lekha Transactions Table</h2>
+              <div className="elekha-inline-stats">
+                <div className="inline-stat">
+                  <span className="inline-stat-label">No. of HOA</span>
+                  <span className="inline-stat-value">{elekhaKpis.numHoas}</span>
+                </div>
+                <div className="inline-stat-divider"></div>
+                <div className="inline-stat">
+                  <span className="inline-stat-label">No. of HO</span>
+                  <span className="inline-stat-value">{elekhaKpis.numHos}</span>
+                </div>
+                <div className="inline-stat-divider"></div>
+                <div className="inline-stat">
+                  <span className="inline-stat-label">No. of Division</span>
+                  <span className="inline-stat-value">{elekhaKpis.numDivs}</span>
+                </div>
+              </div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                Loaded <strong>{filteredElekhaData.length}</strong> matching transactions
+              </div>
+            </div>
+
+            <div className="table-wrapper top-scrollbar">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="TE Number" 
+                        columnName="TE Number" 
+                        allValues={getFilteredElekhaDataForColumn('TE Number').map(d => String(d['TE Number'] || ''))} 
+                        selectedFilters={elekhaColumnFilters['TE Number']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Txn Date" 
+                        columnName="Txn Date" 
+                        allValues={getFilteredElekhaDataForColumn('Txn Date').map(d => d['Txn Date'])} 
+                        selectedFilters={elekhaColumnFilters['Txn Date']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Month" 
+                        columnName="Month" 
+                        allValues={getFilteredElekhaDataForColumn('Month').map(d => d.Month)} 
+                        selectedFilters={elekhaColumnFilters.Month} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Region" 
+                        columnName="Region" 
+                        allValues={getFilteredElekhaDataForColumn('Region').map(d => d.Region)} 
+                        selectedFilters={elekhaColumnFilters.Region} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="DDO" 
+                        columnName="DDO Code" 
+                        allValues={getFilteredElekhaDataForColumn('DDO Code').map(d => d['DDO Code'])} 
+                        selectedFilters={elekhaColumnFilters['DDO Code']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="HO" 
+                        columnName="HO" 
+                        allValues={getFilteredElekhaDataForColumn('HO').map(d => d.HO)} 
+                        selectedFilters={elekhaColumnFilters.HO} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Division" 
+                        columnName="Division" 
+                        allValues={getFilteredElekhaDataForColumn('Division').map(d => d.Division)} 
+                        selectedFilters={elekhaColumnFilters.Division} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="HOA" 
+                        columnName="HOA" 
+                        allValues={getFilteredElekhaDataForColumn('HOA').map(d => d.HOA)} 
+                        selectedFilters={elekhaColumnFilters.HOA} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Description" 
+                        columnName="Description" 
+                        allValues={getFilteredElekhaDataForColumn('Description').map(d => d.Description)} 
+                        selectedFilters={elekhaColumnFilters.Description} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="Receipts" 
+                        columnName="Receipt (Rs.)" 
+                        allValues={getFilteredElekhaDataForColumn('Receipt (Rs.)').map(d => String(d['Receipt (Rs.)'] || '0').trim())} 
+                        selectedFilters={elekhaColumnFilters['Receipt (Rs.)']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter 
+                        title="Payments" 
+                        columnName="Payment (Rs.)" 
+                        allValues={getFilteredElekhaDataForColumn('Payment (Rs.)').map(d => String(d['Payment (Rs.)'] || '0').trim())} 
+                        selectedFilters={elekhaColumnFilters['Payment (Rs.)']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                    <th>
+                      <ColumnHeaderFilter 
+                        title="Remark" 
+                        columnName="Remark" 
+                        allValues={getFilteredElekhaDataForColumn('Remark').map(d => String(d['Remark'] || '').trim())} 
+                        selectedFilters={elekhaColumnFilters['Remark']} 
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredElekhaData.length === 0 ? (
+                    <tr>
+                      <td colSpan={12} className="text-center" style={{ padding: '3rem', color: 'var(--text-secondary)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <AlertCircle size={24} style={{ color: 'var(--color-warning)' }} />
+                          <span style={{ fontWeight: 600 }}>No transactions found matching active filters.</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedElekhaData.map((row, idx) => (
+                      <tr key={idx}>
+                        <td>{row['TE Number'] || '–'}</td>
+                        <td>{row['Txn Date'] || '–'}</td>
+                        <td>{row['Month'] || '–'}</td>
+                        <td>{row['Region'] || '–'}</td>
+                        <td>{row['DDO Code'] || '–'}</td>
+                        <td>{row['HO'] || '–'}</td>
+                        <td>{row['Division'] || '–'}</td>
+                        <td>{row['HOA'] || '–'}</td>
+                        <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.Description}>
+                          {row.Description || '–'}
+                        </td>
+                        <td className="text-right" style={{ color: parseNumber(row['Receipt (Rs.)']) > 0 ? 'var(--color-success)' : 'inherit' }}>
+                          {row['Receipt (Rs.)'] || '–'}
+                        </td>
+                        <td className="text-right" style={{ color: parseNumber(row['Payment (Rs.)']) > 0 ? 'var(--color-warning)' : 'inherit' }}>
+                          {row['Payment (Rs.)'] || '–'}
+                        </td>
+                        <td style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.Remark}>
+                          {row.Remark || '–'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination and Exports */}
+            {filteredElekhaData.length > 0 && (
+              <div className="pagination-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {/* Bottom Left Exports */}
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button 
+                    onClick={handleExportElekhaCSV} 
+                    className="pg-btn" 
+                    style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', fontWeight: 600 }}
+                  >
+                    <Download size={14} /> Export to CSV
+                  </button>
+                  <button 
+                    onClick={handleExportElekhaExcel} 
+                    className="pg-btn" 
+                    style={{ backgroundColor: '#22c55e', color: 'white', border: 'none', fontWeight: 600 }}
+                  >
+                    <Download size={14} /> Export to Excel
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <div className="pagination-info">
+                    Showing <strong>{elekhaPage * elekhaRowsPerPage + 1}</strong> to <strong>{Math.min((elekhaPage + 1) * elekhaRowsPerPage, filteredElekhaData.length)}</strong> of <strong>{filteredElekhaData.length}</strong> records
+                  </div>
+                  <select 
+                    className="custom-select" 
+                    value={elekhaRowsPerPage} 
+                    onChange={(e) => {
+                      setElekhaRowsPerPage(parseInt(e.target.value, 10));
+                      setElekhaPage(0);
+                    }}
+                    style={{ padding: '0.4rem 2rem 0.4rem 1rem', minWidth: '80px' }}
+                  >
+                    <option value="25">25 rows</option>
+                    <option value="50">50 rows</option>
+                    <option value="100">100 rows</option>
+                  </select>
+
+                  <div className="pagination-buttons" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button 
+                      className="pg-btn" 
+                      disabled={elekhaPage === 0} 
+                      onClick={() => setElekhaPage(prev => Math.max(prev - 1, 0))}
+                    >
+                      <ChevronLeft size={16} /> Prev
+                    </button>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Page:</span>
+                      <input 
+                        type="text" 
+                        className="custom-input" 
+                        value={elekhaPageInput} 
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, ''); // only digits
+                          setElekhaPageInput(val);
+                          if (val) {
+                            const pNum = parseInt(val, 10) - 1;
+                            const maxPage = Math.ceil(filteredElekhaData.length / elekhaRowsPerPage) - 1;
+                            if (pNum >= 0 && pNum <= maxPage) {
+                              setElekhaPage(pNum);
+                            }
+                          }
+                        }}
+                        style={{
+                          width: '45px',
+                          padding: '4px 6px',
+                          borderRadius: '4px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--bg-input)',
+                          color: 'var(--text-primary)',
+                          height: '30px',
+                          textAlign: 'center',
+                          fontSize: '0.85rem'
+                        }}
+                      />
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/ {Math.ceil(filteredElekhaData.length / elekhaRowsPerPage)}</span>
+                    </div>
+
+                    <button 
+                      className="pg-btn" 
+                      disabled={(elekhaPage + 1) * elekhaRowsPerPage >= filteredElekhaData.length} 
+                      onClick={() => setElekhaPage(prev => prev + 1)}
+                    >
+                      Next <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Tab 3: Rebuilt Vertical Revenue Report View (Horizontal Matrix Comparison Grid) */}
+        {activeTab === 'revenue' && (
+          <>
+            {/* Filter Headers section */}
+            <div className="card-title-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.4rem' }}>Vertical Revenue Report Matrix</h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                    Horizontal comparative revenue flow report grouped by Category and HOA across HO, Division, or Region columns
+                  </p>
                 </div>
               </div>
 
-              {/* Generate Action Button */}
-              <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={handleGenerateReport}
-                  className="btn btn-primary"
-                  style={{ padding: '0.75rem 2rem', fontWeight: 700, fontSize: '0.95rem' }}
+              {/* Selector filters row */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Type</label>
+                  <select 
+                    className="custom-select" 
+                    value={revenueType} 
+                    onChange={(e) => setRevenueType(e.target.value)}
+                    style={{ minWidth: '100px' }}
+                  >
+                    <option value="Month">Month</option>
+                    <option value="Day">Day</option>
+                  </select>
+                </div>
+
+                {revenueType === 'Month' ? (
+                  <>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 1 From</label>
+                      <select className="custom-select" value={p1From} onChange={(e) => setP1From(e.target.value)}>
+                        {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
+                      <select className="custom-select" value={p1To} onChange={(e) => setP1To(e.target.value)}>
+                        {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 2 From</label>
+                      <select className="custom-select" value={p2From} onChange={(e) => setP2From(e.target.value)}>
+                        {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
+                      <select className="custom-select" value={p2To} onChange={(e) => setP2To(e.target.value)}>
+                        {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Day date range selectors */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 1 From</label>
+                      <input type="date" className="mini-input" value={p1FromDate} onChange={(e) => setP1FromDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
+                      <input type="date" className="mini-input" value={p1ToDate} onChange={(e) => setP1ToDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 2 From</label>
+                      <input type="date" className="mini-input" value={p2FromDate} onChange={(e) => setP2FromDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
+                      <input type="date" className="mini-input" value={p2ToDate} onChange={(e) => setP2ToDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
+                    </div>
+                  </>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Report Type</label>
+                  <select 
+                    className="custom-select" 
+                    value={reportType} 
+                    onChange={(e) => setReportType(e.target.value)}
+                    style={{ minWidth: '100px' }}
+                  >
+                    <option value="Detail">Detail</option>
+                    <option value="Summary">Summary</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Group by</label>
+                  <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', height: '37px' }}>
+                    <button 
+                      onClick={() => setGroupBy('ho')}
+                      style={{ 
+                        border: 'none', 
+                        padding: '0 0.75rem', 
+                        fontSize: '0.8rem', 
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        backgroundColor: groupBy === 'ho' ? 'var(--color-primary)' : 'var(--bg-input)',
+                        color: groupBy === 'ho' ? '#14210f' : 'var(--text-secondary)'
+                      }}
+                    >
+                      HO-wise
+                    </button>
+                    <button 
+                      onClick={() => setGroupBy('division')}
+                      style={{ 
+                        border: 'none', 
+                        padding: '0 0.75rem', 
+                        fontSize: '0.8rem', 
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        backgroundColor: groupBy === 'division' ? 'var(--color-primary)' : 'var(--bg-input)',
+                        color: groupBy === 'division' ? '#14210f' : 'var(--text-secondary)'
+                      }}
+                    >
+                      Division-wise
+                    </button>
+                    <button 
+                      onClick={() => setGroupBy('region')}
+                      style={{ 
+                        border: 'none', 
+                        padding: '0 0.75rem', 
+                        fontSize: '0.8rem', 
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        backgroundColor: groupBy === 'region' ? 'var(--color-primary)' : 'var(--bg-input)',
+                        color: groupBy === 'region' ? '#14210f' : 'var(--text-secondary)'
+                      }}
+                    >
+                      Region-wise
+                    </button>
+                  </div>
+                </div>
+
+                <button 
+                  className="pg-btn" 
+                  onClick={handleGenerate} 
+                  style={{ 
+                    alignSelf: 'flex-end', 
+                    height: '37px', 
+                    padding: '0 1.5rem', 
+                    backgroundColor: 'var(--color-primary)', 
+                    color: '#14210f',
+                    fontWeight: 'bold',
+                    border: 'none'
+                  }}
                 >
-                  <RefreshCw size={18} />
-                  <span>Generate Matrix Report</span>
+                  Generate
                 </button>
               </div>
             </div>
 
-            {/* Generated Matrix Table View */}
+            {/* Generated Comparative Table section */}
             {!verticalRevenueReportData ? (
-              <div className="card shadow-glass" style={{ textAlign: 'center', padding: '4rem 2rem', color: 'var(--text-tertiary)' }}>
-                <TrendingUp size={48} style={{ opacity: 0.3, marginBottom: '1rem' }} />
-                <h3 style={{ color: 'var(--text-secondary)' }}>No Report Generated Yet</h3>
-                <p style={{ maxWidth: '500px', margin: '0.5rem auto 0 auto', fontSize: '0.9rem' }}>
-                  Please select your desired period parameters above and click <strong>"Generate Matrix Report"</strong> to compute the vertical revenue matrix.
-                </p>
+              <div className="empty-state" style={{ padding: '3rem 0' }}>
+                <AlertCircle />
+                <p>Click the <strong>Generate</strong> button to render the vertical revenue matrix comparison.</p>
               </div>
             ) : (
-              <div className="card shadow-glass" style={{ padding: 0, overflow: 'hidden' }}>
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="custom-table vertical-matrix-table">
+              <>
+                {/* Vertical Revenue KPIs Summary Bar */}
+                {revenueKpis && (
+                  <div 
+                    className="budget-summary-bar" 
+                    style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
+                      gap: '0.75rem', 
+                      marginBottom: '1.5rem' 
+                    }}
+                  >
+                    {['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'PLI', 'RPLI', 'Gross'].map(cat => {
+                      const data = revenueKpis[cat] || { p1: 0, p2: 0 };
+                      const label = translateCategoryVal(cat);
+                      const isGross = cat === 'Gross';
+                      
+                      return (
+                        <div 
+                          key={cat} 
+                          className="budget-summary-card"
+                          style={{
+                            padding: '0.75rem',
+                            border: isGross ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
+                            backgroundColor: isGross ? 'rgba(14, 165, 233, 0.05)' : 'var(--bg-card)',
+                            boxShadow: 'var(--shadow-sm)'
+                          }}
+                        >
+                          <h5 style={{ fontSize: '0.75rem', margin: '0 0 6px 0', textTransform: 'uppercase', color: isGross ? 'var(--color-primary)' : 'var(--text-secondary)' }}>
+                            {label}
+                          </h5>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>{getPeriodLabel(1)}:</span>
+                              <span>{formatINR(data.p1)}</span>
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>{getPeriodLabel(2)}:</span>
+                              <span>{formatINR(data.p2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '1.25rem 0', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    Displaying Period comparison: <strong>Period 1</strong> vs <strong>Period 2</strong> (Grouped by {generatedConfig.groupBy === 'ho' ? 'HO' : generatedConfig.groupBy === 'division' ? 'Division' : 'Region'})
+                  </div>
+                  
+                  <button
+                    type="button"
+                    className={`pg-btn ${isRevenueChartMode ? 'active' : ''}`}
+                    onClick={() => setIsRevenueChartMode(!isRevenueChartMode)}
+                    style={{
+                      height: '32px',
+                      padding: '0 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontWeight: 'bold',
+                      backgroundColor: isRevenueChartMode ? 'var(--color-primary)' : 'var(--bg-input)',
+                      color: isRevenueChartMode ? '#14210f' : 'var(--text-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)'
+                    }}
+                  >
+                    <BarChart2 size={14} /> Chart Options
+                  </button>
+                </div>
+
+                {/* Revenue Chart Collapsible Panel */}
+                {isRevenueChartMode && revenueChartData.length > 0 && (
+                  <div 
+                    className="chart-panel" 
+                    style={{
+                      backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '1.5rem',
+                      marginBottom: '1.5rem'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                      <div>
+                        <h4 style={{ margin: 0, color: 'var(--text-primary)' }}>Vertical Revenue Category Comparison</h4>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          Comparing total receipts of Period 1 (P1) vs Period 2 (P2) across categories.
+                        </p>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {['bar', 'line', 'pie'].map(t => (
+                          <button
+                            key={t}
+                            onClick={() => setSelectedRevenueChartType(t)}
+                            className={`pg-btn ${selectedRevenueChartType === t ? 'active' : ''}`}
+                            style={{
+                              height: '30px',
+                              padding: '0 12px',
+                              fontSize: '0.8rem',
+                              backgroundColor: selectedRevenueChartType === t ? 'var(--color-primary)' : 'var(--bg-input)'
+                            }}
+                          >
+                            {t.toUpperCase()} CHART
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {selectedRevenueChartType === 'pie' ? (
+                      <SVGPieChart 
+                        data={revenueChartData} 
+                        colors={['#c9a227', '#1f6f5c', '#a97e1f', '#4c7ea8', '#8a6d2f', '#2f9e6b', '#b08d3e']} 
+                      />
+                    ) : selectedRevenueChartType === 'bar' ? (
+                      <SVGBarChart 
+                        data={revenueChartData} 
+                        colors={['#c9a227', '#1f6f5c']} 
+                      />
+                    ) : (
+                      <SVGLineChart 
+                        data={revenueChartData} 
+                        colors={['#c9a227', '#1f6f5c']} 
+                      />
+                    )}
+
+                    {selectedRevenueChartType !== 'pie' && (
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '15px', fontSize: '0.85rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#c9a227', borderRadius: '2px' }}></span>
+                          <span>{getPeriodLabel(1)}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#1f6f5c', borderRadius: '2px' }}></span>
+                          <span>{getPeriodLabel(2)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="table-wrapper top-scrollbar">
+                  <table className="premium-table">
                     <thead>
                       <tr>
-                        <th rowSpan="2" style={{ verticalAlign: 'middle', borderRight: '1px solid var(--border-color)' }}>Category</th>
-                        <th rowSpan="2" style={{ verticalAlign: 'middle', borderRight: '1px solid var(--border-color)' }}>HOA</th>
-                        <th rowSpan="2" style={{ verticalAlign: 'middle', borderRight: '1px solid var(--border-color)', minWidth: '220px' }}>Description</th>
+                        <th rowSpan={2} style={{ verticalAlign: 'middle', borderBottomWidth: '2px' }}>
+                          <ColumnHeaderFilter 
+                            title="Category" 
+                            columnName="Category" 
+                            allValues={hoaList.map(d => d.Category)} 
+                            selectedFilters={revenueColumnFilters['Category']} 
+                            onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                          />
+                        </th>
+                        <th rowSpan={2} style={{ verticalAlign: 'middle', borderBottomWidth: '2px' }}>
+                          <ColumnHeaderFilter 
+                            title="HOA" 
+                            columnName="HOA" 
+                            allValues={hoaList.map(d => String(d['HOA Code'] || '').trim())} 
+                            selectedFilters={revenueColumnFilters['HOA']} 
+                            onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                          />
+                        </th>
+                        <th rowSpan={2} style={{ verticalAlign: 'middle', borderBottomWidth: '2px' }}>
+                          <ColumnHeaderFilter 
+                            title="Description" 
+                            columnName="Description" 
+                            allValues={hoaList.map(d => String(d.Description || '').trim())} 
+                            selectedFilters={revenueColumnFilters['Description']} 
+                            onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                          />
+                        </th>
                         
-                        {verticalRevenueReportData.uniqueUnits.map(g => (
-                          <th key={g.name} colSpan="2" style={{ textAlign: 'center', borderRight: '1px solid var(--border-color)' }}>
-                            {g.label}
+                        {/* Level 1: Office Column groups */}
+                        {verticalRevenueReportData.uniqueUnits.map((u, uIdx) => (
+                          <th key={uIdx} colSpan={2} className="text-center" style={{ borderBottom: '1px solid var(--border-color)', borderLeft: '1px solid var(--border-color)' }}>
+                            <ColumnHeaderFilter 
+                              title={u.label} 
+                              columnName="Unit" 
+                              allValues={verticalRevenueReportData.allRawUnits} 
+                              selectedFilters={revenueColumnFilters['Unit']} 
+                              onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                            />
                           </th>
                         ))}
-                        
-                        <th colSpan="2" style={{ textAlign: 'center', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--text-primary)' }}>
+
+                        {/* Gross Total Column Header */}
+                        <th colSpan={2} className="text-center" style={{ borderBottom: '1px solid var(--border-color)', borderLeft: '2px solid var(--border-color)', fontWeight: 'bold' }}>
                           Gross Total
                         </th>
                       </tr>
                       <tr>
-                        {verticalRevenueReportData.uniqueUnits.map(g => (
-                          <React.Fragment key={g.name}>
-                            <th style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>{getPeriodLabel(1)}</th>
-                            <th style={{ textAlign: 'right', fontSize: '0.75rem', color: '#10b981', borderRight: '1px solid var(--border-color)' }}>{getPeriodLabel(2)}</th>
+                        {/* Level 2: Period sub-columns */}
+                        {verticalRevenueReportData.uniqueUnits.map((u, uIdx) => (
+                          <React.Fragment key={uIdx}>
+                            <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderLeft: '1px solid var(--border-color)', borderBottomWidth: '2px' }}>
+                              {getPeriodLabel(1)}
+                            </th>
+                            <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderBottomWidth: '2px' }}>
+                              {getPeriodLabel(2)}
+                            </th>
                           </React.Fragment>
                         ))}
-                        <th style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--accent-cyan)', background: 'rgba(59, 130, 246, 0.15)' }}>{getPeriodLabel(1)}</th>
-                        <th style={{ textAlign: 'right', fontSize: '0.75rem', color: '#10b981', background: 'rgba(59, 130, 246, 0.15)' }}>{getPeriodLabel(2)}</th>
+                        {/* Gross Total Period sub-headers */}
+                        <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderLeft: '2px solid var(--border-color)', borderBottomWidth: '2px', fontWeight: 'bold' }}>
+                          {getPeriodLabel(1)}
+                        </th>
+                        <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderBottomWidth: '2px', fontWeight: 'bold' }}>
+                          {getPeriodLabel(2)}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {verticalRevenueReportData.categoriesOrder.map(cat => {
                         const hoas = verticalRevenueReportData.groupedHoas[cat] || [];
-                        const isDetail = generatedConfig.reportType === 'Detail';
-                        const catCls = cat.toLowerCase();
+                        const clsRow = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}`;
+                        const clsTotal = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}-total`;
 
                         return (
                           <React.Fragment key={cat}>
-                            {/* Detail HOA Rows */}
-                            {isDetail && hoas.map(hoa => {
+                            {/* Render detail HOA rows under this category (if detail is selected) */}
+                            {generatedConfig.reportType === 'Detail' && hoas.map(hoa => {
                               const hoaCode = String(hoa['HOA Code'] || '').trim();
                               return (
-                                <tr key={hoaCode} className={`${catCls}-row`}>
-                                  <td style={{ fontWeight: 600, borderRight: '1px solid var(--border-color)' }}>{cat}</td>
-                                  <td style={{ fontFamily: 'monospace', fontWeight: 600, borderRight: '1px solid var(--border-color)' }}>{hoaCode}</td>
-                                  <td style={{ borderRight: '1px solid var(--border-color)' }}>{hoa['Description']}</td>
-                                  
-                                  {verticalRevenueReportData.uniqueUnits.map(g => {
-                                    const v1 = verticalRevenueReportData.p1Totals[`${hoaCode}_${g.name}`] || 0;
-                                    const v2 = verticalRevenueReportData.p2Totals[`${hoaCode}_${g.name}`] || 0;
+                                <tr key={hoaCode} className={clsRow}>
+                                  <td style={{ fontWeight: 500 }}>{translateCategoryVal(cat)}</td>
+                                  <td><code>{hoaCode}</code></td>
+                                  <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hoa.Description}>
+                                    {hoa.Description}
+                                  </td>
+                                  {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
+                                    const val1 = verticalRevenueReportData.p1Totals[`${hoaCode}_${g.name}`] || 0;
+                                    const val2 = verticalRevenueReportData.p2Totals[`${hoaCode}_${g.name}`] || 0;
                                     return (
-                                      <React.Fragment key={g.name}>
-                                        <td style={{ textAlign: 'right' }}>{v1 !== 0 ? formatIndianNumber(v1) : '–'}</td>
-                                        <td style={{ textAlign: 'right', borderRight: '1px solid var(--border-color)' }}>{v2 !== 0 ? formatIndianNumber(v2) : '–'}</td>
+                                      <React.Fragment key={gIdx}>
+                                        <td className="text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>{formatTableValue(val1)}</td>
+                                        <td className="text-right">{formatTableValue(val2)}</td>
                                       </React.Fragment>
                                     );
                                   })}
-
-                                  {/* HOA Row Gross */}
-                                  <td style={{ textAlign: 'right', fontWeight: 600, background: 'rgba(255,255,255,0.03)' }}>
-                                    {verticalRevenueReportData.rowP1Gross[hoaCode] !== 0 ? formatIndianNumber(verticalRevenueReportData.rowP1Gross[hoaCode]) : '–'}
+                                  {/* Gross Total cells per row */}
+                                  <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)', fontWeight: 600 }}>
+                                    {formatTableValue(verticalRevenueReportData.rowP1Gross[hoaCode] || 0)}
                                   </td>
-                                  <td style={{ textAlign: 'right', fontWeight: 600, background: 'rgba(255,255,255,0.03)' }}>
-                                    {verticalRevenueReportData.rowP2Gross[hoaCode] !== 0 ? formatIndianNumber(verticalRevenueReportData.rowP2Gross[hoaCode]) : '–'}
+                                  <td className="text-right" style={{ fontWeight: 600 }}>
+                                    {formatTableValue(verticalRevenueReportData.rowP2Gross[hoaCode] || 0)}
                                   </td>
                                 </tr>
                               );
                             })}
 
-                            {/* Subtotal Row per Category */}
-                            <tr className={`${catCls}-total`} style={{ fontWeight: 700 }}>
-                              <td colSpan="3" style={{ borderRight: '1px solid var(--border-color)' }}>
-                                {cat} Total Subtotal
-                              </td>
-                              
-                              {verticalRevenueReportData.uniqueUnits.map(g => {
-                                const c1 = verticalRevenueReportData.p1CatTotals[`${cat}_${g.name}`] || 0;
-                                const c2 = verticalRevenueReportData.p2CatTotals[`${cat}_${g.name}`] || 0;
+                            {/* Subtotal row for Category */}
+                            <tr className={clsTotal}>
+                              <td style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{translateCategoryVal(cat)} Total</td>
+                              <td></td>
+                              <td></td>
+                              {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
+                                const catVal1 = verticalRevenueReportData.p1CatTotals[`${cat}_${g.name}`] || 0;
+                                const catVal2 = verticalRevenueReportData.p2CatTotals[`${cat}_${g.name}`] || 0;
                                 return (
-                                  <React.Fragment key={g.name}>
-                                    <td style={{ textAlign: 'right' }}>{c1 !== 0 ? formatIndianNumber(c1) : '–'}</td>
-                                    <td style={{ textAlign: 'right', borderRight: '1px solid var(--border-color)' }}>{c2 !== 0 ? formatIndianNumber(c2) : '–'}</td>
+                                  <React.Fragment key={gIdx}>
+                                    <td className="text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>{formatTableValue(catVal1)}</td>
+                                    <td className="text-right">{formatTableValue(catVal2)}</td>
                                   </React.Fragment>
                                 );
                               })}
-
-                              <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                                {formatIndianNumber(verticalRevenueReportData.catP1Gross[cat] || 0)}
+                              {/* Category Gross Total cells */}
+                              <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)', fontWeight: 'bold' }}>
+                                {formatTableValue(verticalRevenueReportData.catP1Gross[cat] || 0)}
                               </td>
-                              <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                                {formatIndianNumber(verticalRevenueReportData.catP2Gross[cat] || 0)}
+                              <td className="text-right" style={{ fontWeight: 'bold' }}>
+                                {formatTableValue(verticalRevenueReportData.catP2Gross[cat] || 0)}
                               </td>
                             </tr>
                           </React.Fragment>
                         );
                       })}
 
-                      {/* Grand Total Row */}
-                      <tr className="grand-total-row">
-                        <td colSpan="3" style={{ borderRight: '1px solid var(--border-color)', fontSize: '0.95rem' }}>
-                          GROSS TOTAL REVENUE
+                      {/* Bottom Gross Total Row */}
+                      <tr className="rev-row-grand-total">
+                        <td style={{ fontWeight: 800 }}>GROSS TOTAL</td>
+                        <td></td>
+                        <td></td>
+                        {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
+                          const uVal1 = verticalRevenueReportData.unitP1Gross[g.name] || 0;
+                          const uVal2 = verticalRevenueReportData.unitP2Gross[g.name] || 0;
+                          return (
+                            <React.Fragment key={gIdx}>
+                              <td className="text-right" style={{ borderLeft: '1px solid var(--border-color)' }}>{formatTableValue(uVal1)}</td>
+                              <td className="text-right">{formatTableValue(uVal2)}</td>
+                            </React.Fragment>
+                          );
+                        })}
+                        {/* Grand Total cells */}
+                        <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)' }}>
+                          {formatTableValue(verticalRevenueReportData.grandP1Gross)}
                         </td>
-                        
-                        {verticalRevenueReportData.uniqueUnits.map(g => (
-                          <React.Fragment key={g.name}>
-                            <td style={{ textAlign: 'right' }}>
-                              {formatIndianNumber(verticalRevenueReportData.unitP1Gross[g.name] || 0)}
-                            </td>
-                            <td style={{ textAlign: 'right', borderRight: '1px solid var(--border-color)' }}>
-                              {formatIndianNumber(verticalRevenueReportData.unitP2Gross[g.name] || 0)}
-                            </td>
-                          </React.Fragment>
-                        ))}
-
-                        <td style={{ textAlign: 'right', fontSize: '1rem' }}>
-                          {formatIndianNumber(verticalRevenueReportData.grandP1Gross)}
-                        </td>
-                        <td style={{ textAlign: 'right', fontSize: '1rem' }}>
-                          {formatIndianNumber(verticalRevenueReportData.grandP2Gross)}
+                        <td className="text-right">
+                          {formatTableValue(verticalRevenueReportData.grandP2Gross)}
                         </td>
                       </tr>
                     </tbody>
                   </table>
+                </div>
+
+                {/* Bottom Bar Controls (Export options left, Stats right) */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
+                  {/* Bottom Left Exports */}
+                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    <button 
+                      onClick={handleExportCSV} 
+                      className="pg-btn" 
+                      style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', fontWeight: 600 }}
+                    >
+                      <Download size={14} /> Export to CSV
+                    </button>
+                    <button 
+                      onClick={handleExportExcel} 
+                      className="pg-btn" 
+                      style={{ backgroundColor: '#22c55e', color: 'white', border: 'none', fontWeight: 600 }}
+                    >
+                      <Download size={14} /> Export to Excel
+                    </button>
+                  </div>
+
+                  {/* Bottom Right Stats */}
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', letterSpacing: '0.5px', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                    ROWS: <strong>{datasetStats.rows.toLocaleString()}</strong> | HOAs: <strong>{datasetStats.hoas}</strong> | HOs: <strong>{datasetStats.hos}</strong> | Divisions: <strong>{datasetStats.divisions}</strong> | Regions: <strong>{datasetStats.regions}</strong>
+                  </div>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {/* Tab 4: User Management View (SA only) */}
+        {activeTab === 'users' && currentUser && currentUser.type === 'SA' && (
+          <>
+            <div className="card-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem' }}>
+              <div>
+                <h2>User Management</h2>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                  Create, edit, reset passwords, and delete user credentials.
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  resetUserManagementForm();
+                  setShowUserModal(true);
+                }}
+                className="pg-btn"
+                style={{
+                  backgroundColor: 'var(--color-primary)',
+                  color: '#14210f',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 'bold',
+                  height: '38px',
+                  padding: '0 1.25rem'
+                }}
+              >
+                <Plus size={16} /> Add User
+              </button>
+            </div>
+
+            <div className="table-wrapper" style={{ marginTop: '1.5rem' }}>
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th>User ID</th>
+                    <th>Name</th>
+                    <th>Mobile No.</th>
+                    <th>Office</th>
+                    <th>Type</th>
+                    <th>Status / Password</th>
+                    <th style={{ textAlign: 'center' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usersList.map((u) => {
+                    const isMaster = u.user_id === '10032853';
+                    const isSA = u.type === 'SA';
+                    const canDelete = !isMaster && (!isSA || currentUser.user_id === '10032853');
+
+                    return (
+                      <tr key={u.user_id}>
+                        <td>
+                          <code style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{u.user_id}</code>
+                          {isMaster && (
+                            <span style={{
+                              marginLeft: '8px',
+                              fontSize: '0.7rem',
+                              backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                              color: '#818cf8',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontWeight: 'bold'
+                            }}>
+                              MASTER
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ fontWeight: 500 }}>{u.name}</td>
+                        <td>{u.mobile_no}</td>
+                        <td>{u.office}</td>
+                        <td>
+                          <span style={{
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            backgroundColor: u.type === 'SA' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                            color: u.type === 'SA' ? '#f87171' : '#34d399'
+                          }}>
+                            {u.type}
+                          </span>
+                        </td>
+                        <td>
+                          {u.needs_password_change ? (
+                            <span style={{ color: 'var(--color-warning)', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Key size={12} /> Default (Requires Change)
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--color-success)', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <CheckCircle size={12} /> Set
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                            <button 
+                              onClick={() => handleEditClick(u)}
+                              className="pg-btn"
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: '0.8rem',
+                                border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-input)',
+                                color: 'var(--text-primary)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              disabled={isMaster && currentUser.user_id !== '10032853'}
+                            >
+                              <Edit size={12} /> Edit
+                            </button>
+                            <button 
+                              onClick={() => handleResetUserPassword(u.user_id)}
+                              className="pg-btn"
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: '0.8rem',
+                                border: '1px solid var(--color-warning)',
+                                color: 'var(--color-warning)',
+                                backgroundColor: 'transparent',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              disabled={isMaster}
+                            >
+                              <RefreshCw size={12} /> Reset Pass
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteUser(u.user_id)}
+                              className="pg-btn"
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: '0.8rem',
+                                border: '1px solid rgba(239, 68, 68, 0.4)',
+                                color: 'var(--color-error)',
+                                backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              disabled={!canDelete}
+                              title={isMaster ? 'Master user cannot be deleted' : (!canDelete ? 'Only Master user can delete SA users' : '')}
+                            >
+                              <Trash2 size={12} /> Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Modal Dialog for Add/Edit User */}
+            {showUserModal && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.65)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999,
+                padding: '20px'
+              }}>
+                <div style={{
+                  backgroundColor: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-lg)',
+                  width: '100%',
+                  maxWidth: '480px',
+                  padding: '30px',
+                  boxShadow: 'var(--shadow-premium)'
+                }}>
+                  <h3 style={{ fontSize: '1.25rem', marginBottom: '1.25rem' }}>
+                    {isEditingUser ? 'Edit User Details' : 'Add New User'}
+                  </h3>
+
+                  <form onSubmit={handleCreateOrUpdateUser} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>User ID (8-digit)</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. 10032853" 
+                        className="custom-input"
+                        value={manageUserId}
+                        onChange={(e) => setManageUserId(e.target.value.replace(/\D/g, '').substring(0, 8))}
+                        disabled={isEditingUser}
+                        style={{ height: '38px', width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Name</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. GORVADIYA" 
+                        className="custom-input"
+                        value={manageName}
+                        onChange={(e) => setManageName(e.target.value)}
+                        style={{ height: '38px', width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Mobile No. (10-digit)</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. 9033201981" 
+                        className="custom-input"
+                        value={manageMobileNo}
+                        onChange={(e) => setManageMobileNo(e.target.value.replace(/\D/g, '').substring(0, 10))}
+                        style={{ height: '38px', width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        Office Access ({manageOffices.length} Selected)
+                      </label>
+                      <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', padding: '10px', backgroundColor: 'var(--bg-input)' }}>
+                        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                          <input 
+                            type="text" 
+                            placeholder="Search offices..." 
+                            value={officeSearchQuery}
+                            onChange={(e) => setOfficeSearchQuery(e.target.value)}
+                            className="custom-input"
+                            style={{ height: '32px', fontSize: '0.8rem', flex: 1, padding: '0 8px', boxSizing: 'border-box' }}
+                          />
+                          <button 
+                            type="button" 
+                            onClick={() => setManageOffices(officeMapping.map(o => String(o['Office ID'])))}
+                            className="pg-btn"
+                            style={{ padding: '0 8px', fontSize: '0.75rem', height: '32px', cursor: 'pointer' }}
+                          >
+                            Select All
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={() => setManageOffices([])}
+                            className="pg-btn"
+                            style={{ padding: '0 8px', fontSize: '0.75rem', height: '32px', cursor: 'pointer' }}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <div style={{ maxHeight: '120px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '4px' }}>
+                          {officeMapping
+                            .filter(o => {
+                              const search = officeSearchQuery.toLowerCase();
+                              return (
+                                String(o['Office ID']).includes(search) || 
+                                String(o['Office Name']).toLowerCase().includes(search)
+                              );
+                            })
+                            .map(o => {
+                              const oId = String(o['Office ID']);
+                              const isChecked = manageOffices.includes(oId);
+                              return (
+                                <label key={oId} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setManageOffices([...manageOffices, oId]);
+                                      } else {
+                                        setManageOffices(manageOffices.filter(id => id !== oId));
+                                      }
+                                    }}
+                                  />
+                                  <span>{o['Office Name']} ({oId})</span>
+                                </label>
+                              );
+                            })
+                          }
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        Tab Rights Access
+                      </label>
+                      <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', padding: '10px', backgroundColor: 'var(--bg-input)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {[
+                          { key: 'budget', label: 'Budget Report' },
+                          { key: 'elekha', label: 'e-Lekha Transactions' },
+                          { key: 'revenue', label: 'Vertical Revenue' },
+                          { key: 'users', label: 'User Management (SA)' },
+                          { key: 'sync', label: 'Database Sync (SA)' }
+                        ].map(r => {
+                          const isChecked = manageRights.includes(r.key);
+                          return (
+                            <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setManageRights([...manageRights, r.key]);
+                                  } else {
+                                    setManageRights(manageRights.filter(key => key !== r.key));
+                                  }
+                                }}
+                              />
+                              <span>{r.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>User Type</label>
+                      <select 
+                        className="custom-select" 
+                        value={manageType}
+                        onChange={(e) => setManageType(e.target.value)}
+                        disabled={manageUserId === '10032853'}
+                        style={{ height: '38px', width: '100%' }}
+                      >
+                        <option value="View">View (Reader)</option>
+                        <option value="SA">SA (Administrator)</option>
+                      </select>
+                    </div>
+
+                    {!isEditingUser && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-input)', padding: '8px 12px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                        ℹ️ New users are assigned the default password <strong>Ahd@12345</strong> and must change it on their first login.
+                      </div>
+                    )}
+
+                    {userManagementError && (
+                      <div style={{
+                        color: 'var(--color-error)',
+                        fontSize: '0.8rem',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        padding: '10px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <AlertTriangle size={14} />
+                        <span>{userManagementError}</span>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '1rem' }}>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setShowUserModal(false);
+                          resetUserManagementForm();
+                        }}
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-secondary)'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        type="submit" 
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'var(--color-primary)',
+                          color: '#14210f',
+                          border: 'none',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        Save User
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             )}
-          </div>
-        )}
+            {showChangePasswordModal && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.65)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999,
+                padding: '20px'
+              }}>
+                <div style={{
+                  backgroundColor: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-lg)',
+                  width: '100%',
+                  maxWidth: '450px',
+                  padding: '30px',
+                  boxShadow: 'var(--shadow-premium)'
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '15px', textAlign: 'center' }}>🔑</div>
+                  <h3 style={{ fontSize: '1.25rem', marginBottom: '1.25rem', textAlign: 'center', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                    Change Password
+                  </h3>
 
-        {/* ========================================================= */}
-        {/* TAB 4: USER MANAGEMENT (ADMIN ONLY) */}
-        {/* ========================================================= */}
-        {activeTab === 'settings' && currentUser?.role === 'admin' && (
-          <div>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>User Access & Role Management</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '0.25rem 0 0 0' }}>
-                Control platform user accounts and permissions stored in Supabase database
-              </p>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
-              
-              {/* Add User Card */}
-              <div className="card shadow-glass" style={{ padding: '1.5rem' }}>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Plus size={18} style={{ color: 'var(--accent-cyan)' }} />
-                  <span>Create New User Account</span>
-                </h3>
-
-                <form onSubmit={handleAddUser}>
-                  {userManagementError && (
-                    <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.6rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                      {userManagementError}
+                  <form onSubmit={handleVoluntaryPasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Current Password</label>
+                      <div style={{ position: 'relative' }}>
+                        <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input 
+                          type="password" 
+                          placeholder="Enter Current Password" 
+                          value={vCurrentPassword}
+                          onChange={(e) => setVCurrentPassword(e.target.value)}
+                          className="custom-input"
+                          style={{ paddingLeft: '38px', width: '100%', height: '38px', boxSizing: 'border-box' }}
+                        />
+                      </div>
                     </div>
-                  )}
-                  {userManagementSuccess && (
-                    <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '0.6rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                      {userManagementSuccess}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>New Password</label>
+                      <div style={{ position: 'relative' }}>
+                        <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input 
+                          type="password" 
+                          placeholder="Enter New Password" 
+                          value={vNewPassword}
+                          onChange={(e) => setVNewPassword(e.target.value)}
+                          className="custom-input"
+                          style={{ paddingLeft: '38px', width: '100%', height: '38px', boxSizing: 'border-box' }}
+                        />
+                      </div>
                     </div>
-                  )}
 
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>
-                      Username
-                    </label>
-                    <input
-                      type="text"
-                      className="filter-input"
-                      placeholder="e.g. jdoe"
-                      value={newUsername}
-                      onChange={e => setNewUsername(e.target.value)}
-                      style={{ width: '100%' }}
-                    />
-                  </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Confirm New Password</label>
+                      <div style={{ position: 'relative' }}>
+                        <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input 
+                          type="password" 
+                          placeholder="Confirm New Password" 
+                          value={vConfirmNewPassword}
+                          onChange={(e) => setVConfirmNewPassword(e.target.value)}
+                          className="custom-input"
+                          style={{ paddingLeft: '38px', width: '100%', height: '38px', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
 
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>
-                      Initial Password
-                    </label>
-                    <input
-                      type="password"
-                      className="filter-input"
-                      placeholder="Set password"
-                      value={newPassword}
-                      onChange={e => setNewPassword(e.target.value)}
-                      style={{ width: '100%' }}
-                    />
-                  </div>
+                    {vPasswordChangeError && (
+                      <div style={{
+                        color: 'var(--color-error)',
+                        fontSize: '0.8rem',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        padding: '10px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <AlertTriangle size={14} />
+                        <span>{vPasswordChangeError}</span>
+                      </div>
+                    )}
 
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>
-                      Role
-                    </label>
-                    <select
-                      className="filter-select"
-                      value={newRole}
-                      onChange={e => setNewRole(e.target.value)}
-                      style={{ width: '100%' }}
-                    >
-                      <option value="user">Standard User</option>
-                      <option value="admin">Administrator</option>
-                    </select>
-                  </div>
-
-                  <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                    <Plus size={16} />
-                    <span>Add User to Supabase</span>
-                  </button>
-                </form>
-              </div>
-
-              {/* Users List Table Card */}
-              <div className="card shadow-glass" style={{ padding: '1.5rem' }}>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <User size={18} style={{ color: 'var(--accent-cyan)' }} />
-                  <span>Existing User Accounts ({usersList.length})</span>
-                </h3>
-
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th>Username</th>
-                        <th>Role</th>
-                        <th style={{ textAlign: 'center' }}>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {usersList.map((user) => (
-                        <tr key={user.id || user.username}>
-                          <td style={{ fontWeight: 600 }}>{user.username}</td>
-                          <td>
-                            <span style={{
-                              fontSize: '0.75rem',
-                              padding: '0.15rem 0.5rem',
-                              borderRadius: '10px',
-                              background: user.role === 'admin' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.2)',
-                              color: user.role === 'admin' ? '#ef4444' : '#3b82f6',
-                              fontWeight: 700,
-                              textTransform: 'uppercase'
-                            }}>
-                              {user.role}
-                            </span>
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <button
-                              onClick={() => handleDeleteUser(user.username)}
-                              className="btn btn-danger"
-                              style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
-                              disabled={user.username === currentUser.username}
-                              title={user.username === currentUser.username ? "Cannot delete self" : "Delete user"}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '1rem' }}>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setShowChangePasswordModal(false);
+                          setVCurrentPassword('');
+                          setVNewPassword('');
+                          setVConfirmNewPassword('');
+                          setVPasswordChangeError('');
+                        }}
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-secondary)'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        type="submit" 
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'var(--color-primary)',
+                          color: '#14210f',
+                          border: 'none',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        Change Password
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
+            )}
+          </>
+        )}
 
+        {/* Tab 5: Database Sync View (SA only) */}
+        {activeTab === 'sync' && currentUser && currentUser.type === 'SA' && (
+          <>
+            <div className="card-title-row" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem', marginBottom: '1.5rem' }}>
+              <div>
+                <h2>Database Synchronization</h2>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                  Upload Excel (.xlsx/.xls) or CSV files to synchronize financial datasets with Supabase.
+                </p>
+              </div>
             </div>
-          </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '800px' }}>
+              {/* Target Table Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>1. Select Target Database Table</label>
+                <select 
+                  className="custom-select"
+                  value={syncTable}
+                  onChange={(e) => {
+                    setSyncTable(e.target.value);
+                    setSyncFile(null);
+                    setSyncHeaders([]);
+                    setParsedRows([]);
+                    setColumnMapping({});
+                    setSyncProgress('');
+                    setSyncError('');
+                    setSyncSuccess(false);
+                    setFileInputKey(Date.now());
+                  }}
+                  style={{ maxWidth: '300px', height: '38px' }}
+                >
+                  <option value="Budget">Budget (public.Budget)</option>
+                  <option value="e-Lekha">e-Lekha (public.e-Lekha)</option>
+                </select>
+              </div>
+
+              {/* File Upload Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>2. Choose File (Excel .xlsx / .xls or CSV)</label>
+                <input 
+                  key={fileInputKey}
+                  type="file" 
+                  accept=".xlsx, .xls, .csv" 
+                  onChange={handleFileChange}
+                  className="custom-input"
+                  style={{ 
+                    maxWidth: '400px', 
+                    padding: '8px', 
+                    border: '1px dashed var(--border-color)', 
+                    backgroundColor: 'var(--bg-input)',
+                    height: 'auto'
+                  }}
+                />
+              </div>
+
+              {/* Select Report Date */}
+              {syncFile && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>3. Select Report Date</label>
+                  <input 
+                    type="date" 
+                    value={syncReportDate}
+                    onChange={(e) => setSyncReportDate(e.target.value)}
+                    className="custom-input"
+                    required
+                    style={{ 
+                      maxWidth: '300px', 
+                      padding: '8px', 
+                      backgroundColor: 'var(--bg-input)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)',
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Mappings and Preview */}
+              {syncFile && syncHeaders.length > 0 && (
+                <div style={{
+                  backgroundColor: 'var(--bg-input)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '15px'
+                }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                    4. Match Column Headings (Destination &harr; Uploaded File)
+                  </h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    Verify how columns from your file align with Supabase fields. Remap headers using the dropdowns if necessary.
+                  </p>
+
+                  <div className="table-wrapper" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                    <table className="premium-table" style={{ fontSize: '0.85rem' }}>
+                      <thead>
+                        <tr>
+                          <th>Destination Database Field</th>
+                          <th>Uploaded File Column Header</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.keys(columnMapping).map((dbField) => (
+                          <tr key={dbField}>
+                            <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{dbField}</td>
+                            <td>
+                              <select
+                                className="custom-select"
+                                value={columnMapping[dbField]}
+                                onChange={(e) => {
+                                  const selectedVal = e.target.value;
+                                  setColumnMapping(prev => ({
+                                    ...prev,
+                                    [dbField]: selectedVal
+                                  }));
+                                }}
+                                style={{ width: '100%', height: '32px', minWidth: '180px' }}
+                              >
+                                <option value="">-- Don't Import / Skip --</option>
+                                {syncHeaders.map(h => (
+                                  <option key={h} value={h}>{h}</option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Sync Mode Option */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
+                    <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>5. Select Synchronization Mode</label>
+                    <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                        <input 
+                          type="radio" 
+                          name="syncMode" 
+                          value="append" 
+                          checked={syncMode === 'append'} 
+                          onChange={(e) => setSyncMode(e.target.value)}
+                        />
+                        <span><strong>Add at last (Append)</strong> — Add new records without changing existing data</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                        <input 
+                          type="radio" 
+                          name="syncMode" 
+                          value="replace" 
+                          checked={syncMode === 'replace'} 
+                          onChange={(e) => setSyncMode(e.target.value)}
+                        />
+                        <span style={{ color: 'var(--color-warning)' }}><strong>Replace entire data (Overwrite)</strong> — Erase existing table rows and upload fresh</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Action Sync Button */}
+                  <div style={{ marginTop: '15px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <button
+                      onClick={handleStartSync}
+                      disabled={isSyncing}
+                      className="pg-btn"
+                      style={{
+                        backgroundColor: 'var(--color-primary)',
+                        color: '#14210f',
+                        border: 'none',
+                        fontWeight: 'bold',
+                        height: '42px',
+                        padding: '0 2rem',
+                        opacity: isSyncing ? 0.7 : 1
+                      }}
+                    >
+                      {isSyncing ? 'Uploading & Syncing...' : 'Upload and Save to Supabase'}
+                    </button>
+
+                    {isSyncing && (
+                      <div className="spinner" style={{ width: '20px', height: '20px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-primary)' }}></div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+            {/* Database Sync Overlay Modal (centered popup) */}
+            {(isSyncing || !!syncError || syncSuccess) && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10000,
+                padding: '20px'
+              }}>
+                <div style={{
+                  backgroundColor: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-lg)',
+                  width: '100%',
+                  maxWidth: '450px',
+                  padding: '30px',
+                  boxShadow: 'var(--shadow-premium)',
+                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '20px'
+                }}>
+                  {isSyncing && (
+                    <>
+                      <div className="spinner" style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-primary)' }}></div>
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Synchronizing Database</h3>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{syncProgress}</p>
+                    </>
+                  )}
+
+                  {syncError && (
+                    <>
+                      <AlertTriangle size={48} style={{ color: 'var(--color-error)' }} />
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--color-error)' }}>Sync Failed</h3>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', wordBreak: 'break-word' }}>{syncError}</p>
+                      <button 
+                        onClick={() => {
+                          setSyncError('');
+                          setIsSyncing(false);
+                          setSyncProgress('');
+                        }}
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'var(--color-primary)',
+                          color: '#14210f',
+                          border: 'none',
+                          fontWeight: 'bold',
+                          width: '100%',
+                          height: '38px',
+                          marginTop: '10px'
+                        }}
+                      >
+                        Close
+                      </button>
+                    </>
+                  )}
+
+                  {syncSuccess && (
+                    <>
+                      <CheckCircle size={48} style={{ color: 'var(--color-success)' }} />
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--color-success)' }}>Data Saved</h3>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>The financial records have been successfully saved to Supabase.</p>
+                      <button 
+                        onClick={() => {
+                          setSyncSuccess(false);
+                          setSyncProgress('');
+                          window.location.reload();
+                        }}
+                        className="pg-btn"
+                        style={{
+                          backgroundColor: 'var(--color-success)',
+                          color: 'white',
+                          border: 'none',
+                          fontWeight: 'bold',
+                          width: '100%',
+                          height: '38px',
+                          marginTop: '10px'
+                        }}
+                      >
+                        OK
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            </div>
+          </>
         )}
 
       </main>
-
-      {/* Change Password Modal */}
-      {showChangePasswordModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.7)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100,
-          padding: '1rem'
-        }}>
-          <div className="card shadow-glass" style={{ width: '100%', maxWidth: '420px', padding: '2rem' }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Key size={18} style={{ color: 'var(--accent-cyan)' }} />
-              <span>Change Password</span>
-            </h3>
-
-            <form onSubmit={handleChangePassword}>
-              {passwordChangeError && (
-                <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.6rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                  {passwordChangeError}
-                </div>
-              )}
-              {passwordChangeSuccess && (
-                <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '0.6rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                  {passwordChangeSuccess}
-                </div>
-              )}
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>
-                  Current Password
-                </label>
-                <input
-                  type="password"
-                  className="filter-input"
-                  placeholder="Enter current password"
-                  value={currentPassword}
-                  onChange={e => setCurrentPassword(e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>
-                  New Password
-                </label>
-                <input
-                  type="password"
-                  className="filter-input"
-                  placeholder="Enter new password"
-                  value={newPasswordChange}
-                  onChange={e => setNewPasswordChange(e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>
-                  Confirm New Password
-                </label>
-                <input
-                  type="password"
-                  className="filter-input"
-                  placeholder="Confirm new password"
-                  value={confirmPasswordChange}
-                  onChange={e => setConfirmPasswordChange(e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowChangePasswordModal(false)}
-                  className="btn btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                >
-                  Update Password
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Footer */}
+      
+      {/* 6. Footer */}
       <footer style={{
-        background: 'var(--bg-secondary)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '1rem 1.5rem',
+        color: 'var(--text-muted)',
+        fontSize: '0.8rem',
         borderTop: '1px solid var(--border-color)',
-        padding: '1rem 2rem',
-        textAlign: 'center',
-        color: 'var(--text-tertiary)',
-        fontSize: '0.8rem'
+        flexWrap: 'wrap',
+        gap: '10px'
       }}>
-        CEBAR © 2026 Consolidated Expenditure & Budget Analysis Report • Government Financial System
+        <div>
+          CEBAR Database Dashboard • Synchronized with Supabase database (Real-time mode active)
+        </div>
       </footer>
     </div>
   );
