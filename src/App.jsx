@@ -843,38 +843,70 @@ export default function App() {
 
   // Excel Export for Budget Report
   const handleExportBudgetExcel = () => {
-    const header = [
-      'Office ID',
-      'Name of Unit (HO/Division)',
-      'Region',
-      'HOA',
-      'Description',
-      'APT Alloted',
-      'APT Consumed',
-      'e-lekha Consumed',
-      'Diff. (APT - e-Lekha)',
-      'APT Consumed %',
-      'e-Lekha Consumed %'
-    ];
+    let html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <style>
+          table { border-collapse: collapse; font-family: Calibri, sans-serif; font-size: 10pt; }
+          th, td { border: 1px solid #d4d4d8; padding: 6px 10px; }
+          th { background-color: #0f172a; color: #f8fafc; font-weight: bold; }
+          .text-right { text-align: right; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <thead>
+            <tr>
+              <th>Office ID</th>
+              <th>Name of Unit (HO/Division)</th>
+              <th>Region</th>
+              <th>HOA</th>
+              <th>Description</th>
+              <th>APT Alloted</th>
+              <th>APT Consumed</th>
+              <th>e-Lekha Consumed</th>
+              <th>Diff. (APT - e-Lekha)</th>
+              <th>APT Consumed %</th>
+              <th>e-Lekha Consumed %</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
 
-    const dataRows = filteredBudgetData.map(row => [
-      row['Office ID'] || '–',
-      row['Name of Unit (HO/Division)'] || '–',
-      row['Region'] || '–',
-      row['HOA'] || '–',
-      row['Description'] || '–',
-      row['APT Alloted'] || '–',
-      row['APT Consumed'] || '–',
-      row['e-lekha Consumed'] || '–',
-      row['Diff. (APT - e-Lekha)'] || '–',
-      row['APT Consumed %'] || '–',
-      row['e-Lekha Consumed %'] || '–'
-    ]);
+    filteredBudgetData.forEach(row => {
+      html += `
+        <tr>
+          <td>${row['Office ID'] || '–'}</td>
+          <td>${row['Name of Unit (HO/Division)'] || '–'}</td>
+          <td>${row['Region'] || '–'}</td>
+          <td>${row['HOA'] || '–'}</td>
+          <td>${row['Description'] || '–'}</td>
+          <td class="text-right">${row['APT Alloted'] || '–'}</td>
+          <td class="text-right">${row['APT Consumed'] || '–'}</td>
+          <td class="text-right">${row['e-lekha Consumed'] || '–'}</td>
+          <td class="text-right">${row['Diff. (APT - e-Lekha)'] || '–'}</td>
+          <td class="text-right">${row['APT Consumed %'] || '–'}</td>
+          <td class="text-right">${row['e-Lekha Consumed %'] || '–'}</td>
+        </tr>
+      `;
+    });
 
-    const worksheet = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Budget Report');
-    XLSX.writeFile(workbook, `Budget_Report_Export.xlsx`);
+    html += `
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Budget_Report_Export.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // CSV Export for e-Lekha Transactions Table
@@ -905,40 +937,72 @@ export default function App() {
 
   // Excel Export for e-Lekha Transactions Table
   const handleExportElekhaExcel = () => {
-    const header = [
-      'TE Number',
-      'Txn Date',
-      'Month',
-      'Region',
-      'DDO',
-      'HO',
-      'Division',
-      'HOA',
-      'Description',
-      'Receipts',
-      'Payments',
-      'Remark'
-    ];
+    let html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <style>
+          table { border-collapse: collapse; font-family: Calibri, sans-serif; font-size: 10pt; }
+          th, td { border: 1px solid #d4d4d8; padding: 6px 10px; }
+          th { background-color: #0f172a; color: #f8fafc; font-weight: bold; }
+          .text-right { text-align: right; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <thead>
+            <tr>
+              <th>TE Number</th>
+              <th>Txn Date</th>
+              <th>Month</th>
+              <th>Region</th>
+              <th>DDO</th>
+              <th>HO</th>
+              <th>Division</th>
+              <th>HOA</th>
+              <th>Description</th>
+              <th>Receipts</th>
+              <th>Payments</th>
+              <th>Remark</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
 
-    const dataRows = filteredElekhaData.map(row => [
-      row['TE Number'] || '–',
-      row['Txn Date'] || '–',
-      row['Month'] || '–',
-      row['Region'] || '–',
-      row['DDO Code'] || '–',
-      row['HO'] || '–',
-      row['Division'] || '–',
-      row['HOA'] || '–',
-      row['Description'] || '–',
-      row['Receipt (Rs.)'] || '–',
-      row['Payment (Rs.)'] || '–',
-      row['Remark'] || '–'
-    ]);
+    filteredElekhaData.forEach(row => {
+      html += `
+        <tr>
+          <td>${row['TE Number'] || '–'}</td>
+          <td>${row['Txn Date'] || '–'}</td>
+          <td>${row['Month'] || '–'}</td>
+          <td>${row['Region'] || '–'}</td>
+          <td>${row['DDO Code'] || '–'}</td>
+          <td>${row['HO'] || '–'}</td>
+          <td>${row['Division'] || '–'}</td>
+          <td>${row['HOA'] || '–'}</td>
+          <td>${row['Description'] || '–'}</td>
+          <td class="text-right">${row['Receipt (Rs.)'] || '–'}</td>
+          <td class="text-right">${row['Payment (Rs.)'] || '–'}</td>
+          <td>${row['Remark'] || '–'}</td>
+        </tr>
+      `;
+    });
 
-    const worksheet = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'e-Lekha Transactions');
-    XLSX.writeFile(workbook, `e-Lekha_Transactions_Export.xlsx`);
+    html += `
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `e-Lekha_Transactions_Export.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // CSV Export for Vertical Revenue Comparison Matrix
@@ -1021,89 +1085,123 @@ export default function App() {
   const handleExportExcel = () => {
     if (!verticalRevenueReportData) return;
     const { uniqueUnits, categoriesOrder, groupedHoas, p1Totals, p2Totals, p1CatTotals, p2CatTotals, rowP1Gross, rowP2Gross, catP1Gross, catP2Gross, grandP1Gross, grandP2Gross, unitP1Gross, unitP2Gross } = verticalRevenueReportData;
+    
+    let html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <style>
+          table { border-collapse: collapse; font-family: Calibri, sans-serif; font-size: 10pt; }
+          th, td { border: 1px solid #d4d4d8; padding: 6px 10px; }
+          th { background-color: #0f172a; color: #f8fafc; font-weight: bold; }
+          .ccs-row { background-color: #f0f9ff; color: #0284c7; }
+          .ccs-total { background-color: #bae6fd; color: #0369a1; font-weight: bold; }
+          .fs-row { background-color: #f0fdf4; color: #16a34a; }
+          .fs-total { background-color: #bbf7d0; color: #15803d; font-weight: bold; }
+          .irgb-row { background-color: #fff7ed; color: #ea580c; }
+          .irgb-total { background-color: #fed7aa; color: #c2410c; font-weight: bold; }
+          .mo-row { background-color: #faf5ff; color: #9333ea; }
+          .mo-total { background-color: #e9d5ff; color: #7e22ce; font-weight: bold; }
+          .parcel-row { background-color: #fff1f2; color: #e11d48; }
+          .parcel-total { background-color: #fecdd3; color: #be123c; font-weight: bold; }
+          .grand-total-row { background-color: #f4f4f5; color: #18181b; font-weight: bold; }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <thead>
+            <tr>
+              <th rowspan="2">Category</th>
+              <th rowspan="2">HOA</th>
+              <th rowspan="2">Description</th>
+    `;
 
-    const headerRow1 = ['Category', 'HOA', 'Description'];
     uniqueUnits.forEach(g => {
-      headerRow1.push(g.label, '');
+      html += `<th colspan="2" class="text-center">${g.label}</th>`;
     });
-    headerRow1.push('Gross Total', '');
 
-    const headerRow2 = ['', '', ''];
+    html += `<th colspan="2" class="text-center">Gross Total</th>`;
+
+    html += `
+            </tr>
+            <tr>
+    `;
+
     uniqueUnits.forEach(() => {
-      headerRow2.push(getPeriodLabel(1), getPeriodLabel(2));
+      html += `<th class="text-center">${getPeriodLabel(1)}</th><th class="text-center">${getPeriodLabel(2)}</th>`;
     });
-    headerRow2.push(getPeriodLabel(1), getPeriodLabel(2));
 
-    const rows = [headerRow1, headerRow2];
+    html += `<th class="text-center">${getPeriodLabel(1)}</th><th class="text-center">${getPeriodLabel(2)}</th>`;
+
+    html += `
+            </tr>
+          </thead>
+          <tbody>
+    `;
 
     categoriesOrder.forEach(cat => {
       const hoas = groupedHoas[cat] || [];
+      const clsRow = `${cat.toLowerCase()}-row`;
+      const clsTotal = `${cat.toLowerCase()}-total`;
 
+      // If Detail, show individual HOAs
       if (generatedConfig.reportType === 'Detail') {
         hoas.forEach(hoa => {
           const hoaCode = String(hoa['HOA Code'] || '').trim();
-          const row = [cat, hoaCode, hoa['Description']];
+          html += `<tr><td class="${clsRow}">${cat}</td><td>${hoaCode}</td><td>${hoa['Description']}</td>`;
           uniqueUnits.forEach(g => {
             const v1 = p1Totals[`${hoaCode}_${g.name}`] || 0;
             const v2 = p2Totals[`${hoaCode}_${g.name}`] || 0;
-            row.push(v1 ? Number(v1.toFixed(2)) : 0);
-            row.push(v2 ? Number(v2.toFixed(2)) : 0);
+            html += `<td class="text-right">${v1 ? v1.toFixed(2) : '-'}</td><td class="text-right">${v2 ? v2.toFixed(2) : '-'}</td>`;
           });
-          row.push(rowP1Gross[hoaCode] ? Number(rowP1Gross[hoaCode].toFixed(2)) : 0);
-          row.push(rowP2Gross[hoaCode] ? Number(rowP2Gross[hoaCode].toFixed(2)) : 0);
-          rows.push(row);
+          html += `<td class="text-right" style="font-weight:bold">${rowP1Gross[hoaCode] ? rowP1Gross[hoaCode].toFixed(2) : '-'}</td><td class="text-right" style="font-weight:bold">${rowP2Gross[hoaCode] ? rowP2Gross[hoaCode].toFixed(2) : '-'}</td>`;
+          html += `</tr>`;
         });
       }
 
       // Subtotal Row
-      const subtotalRow = [`${cat} Total`, '', ''];
+      html += `<tr class="${clsTotal}"><td class="${clsTotal}">${cat} Total</td><td></td><td></td>`;
       uniqueUnits.forEach(g => {
         const c1 = p1CatTotals[`${cat}_${g.name}`] || 0;
         const c2 = p2CatTotals[`${cat}_${g.name}`] || 0;
-        subtotalRow.push(c1 ? Number(c1.toFixed(2)) : 0);
-        subtotalRow.push(c2 ? Number(c2.toFixed(2)) : 0);
+        html += `<td class="text-right">${c1 ? c1.toFixed(2) : '-'}</td><td class="text-right">${c2 ? c2.toFixed(2) : '-'}</td>`;
       });
-      subtotalRow.push(catP1Gross[cat] ? Number(catP1Gross[cat].toFixed(2)) : 0);
-      subtotalRow.push(catP2Gross[cat] ? Number(catP2Gross[cat].toFixed(2)) : 0);
-      rows.push(subtotalRow);
+      html += `<td class="text-right" style="font-weight:bold">${catP1Gross[cat] ? catP1Gross[cat].toFixed(2) : '-'}</td><td class="text-right" style="font-weight:bold">${catP2Gross[cat] ? catP2Gross[cat].toFixed(2) : '-'}</td>`;
+      html += `</tr>`;
     });
 
-    // Grand Total Row
-    const grandRow = ['GROSS TOTAL', '', ''];
+    // Grand Total Bottom Row
+    html += `<tr class="grand-total-row"><td>GROSS TOTAL</td><td></td><td></td>`;
     uniqueUnits.forEach(g => {
       const u1 = unitP1Gross[g.name] || 0;
       const u2 = unitP2Gross[g.name] || 0;
-      grandRow.push(u1 ? Number(u1.toFixed(2)) : 0);
-      grandRow.push(u2 ? Number(u2.toFixed(2)) : 0);
+      html += `<td class="text-right">${u1 ? u1.toFixed(2) : '-'}</td><td class="text-right">${u2 ? u2.toFixed(2) : '-'}</td>`;
     });
-    grandRow.push(grandP1Gross ? Number(grandP1Gross.toFixed(2)) : 0);
-    grandRow.push(grandP2Gross ? Number(grandP2Gross.toFixed(2)) : 0);
-    rows.push(grandRow);
+    html += `<td class="text-right">${grandP1Gross ? grandP1Gross.toFixed(2) : '-'}</td><td class="text-right">${grandP2Gross ? grandP2Gross.toFixed(2) : '-'}</td>`;
+    html += `</tr>`;
 
-    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    html += `
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
 
-    // Merge header cells for clean presentation
-    const merges = [
-      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
-      { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
-      { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } }
-    ];
-    let colIdx = 3;
-    uniqueUnits.forEach(() => {
-      merges.push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + 1 } });
-      colIdx += 2;
-    });
-    merges.push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + 1 } });
-    worksheet['!merges'] = merges;
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Vertical Revenue');
-
+    const blob = new Blob([html], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    
     const rangeText = generatedConfig.type === 'Month' 
       ? `P1_${generatedConfig.p1From}_to_${generatedConfig.p1To}_P2_${generatedConfig.p2From}_to_${generatedConfig.p2To}`
       : `P1_${generatedConfig.p1FromDate}_to_${generatedConfig.p1ToDate}_P2_${generatedConfig.p2FromDate}_to_${generatedConfig.p2ToDate}`;
 
-    XLSX.writeFile(workbook, `Vertical_Revenue_Report_${rangeText}.xlsx`);
+    link.setAttribute('download', `Vertical_Revenue_Report_${rangeText}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (isLoading) {
