@@ -2558,70 +2558,24 @@ export default function App() {
 
   // Excel Export for Budget Report
   const handleExportBudgetExcel = () => {
-    let html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8">
-        <style>
-          table { border-collapse: collapse; font-family: Calibri, sans-serif; font-size: 10pt; }
-          th, td { border: 1px solid #d4d4d8; padding: 6px 10px; }
-          th { background-color: #0f172a; color: #f8fafc; font-weight: bold; }
-          .text-right { text-align: right; }
-        </style>
-      </head>
-      <body>
-        <table>
-          <thead>
-            <tr>
-              <th>Office ID</th>
-              <th>Name of Unit (HO/Division)</th>
-              <th>Region</th>
-              <th>HOA</th>
-              <th>Description</th>
-              <th>APT Alloted</th>
-              <th>APT Consumed</th>
-              <th>e-Lekha Consumed</th>
-              <th>Diff. (APT - e-Lekha)</th>
-              <th>APT Consumed %</th>
-              <th>e-Lekha Consumed %</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
+    const exportData = filteredBudgetData.map(row => ({
+      'Office ID': row['Office ID'] || '–',
+      'Name of Unit (HO/Division)': row['Name of Unit (HO/Division)'] || '–',
+      'Region': row['Region'] || '–',
+      'HOA': row['HOA'] || '–',
+      'Description': row['Description'] || '–',
+      'APT Alloted': row['APT Alloted'] ?? 0,
+      'APT Consumed': row['APT Consumed'] ?? 0,
+      'e-Lekha Consumed': row['e-lekha Consumed'] ?? 0,
+      'Diff. (APT - e-Lekha)': row['Diff. (APT - e-Lekha)'] ?? 0,
+      'APT Consumed %': typeof row['APT Consumed %'] === 'number' ? (row['APT Consumed %'].toFixed(2) + '%') : (row['APT Consumed %'] || '0.00%'),
+      'e-Lekha Consumed %': typeof row['e-Lekha Consumed %'] === 'number' ? (row['e-Lekha Consumed %'].toFixed(2) + '%') : (row['e-Lekha Consumed %'] || '0.00%')
+    }));
 
-    filteredBudgetData.forEach(row => {
-      html += `
-        <tr>
-          <td>${row['Office ID'] || '–'}</td>
-          <td>${row['Name of Unit (HO/Division)'] || '–'}</td>
-          <td>${row['Region'] || '–'}</td>
-          <td>${row['HOA'] || '–'}</td>
-          <td>${row['Description'] || '–'}</td>
-          <td class="text-right">${row['APT Alloted'] || '–'}</td>
-          <td class="text-right">${row['APT Consumed'] || '–'}</td>
-          <td class="text-right">${row['e-lekha Consumed'] || '–'}</td>
-          <td class="text-right">${row['Diff. (APT - e-Lekha)'] || '–'}</td>
-          <td class="text-right">${row['APT Consumed %'] || '–'}</td>
-          <td class="text-right">${row['e-Lekha Consumed %'] || '–'}</td>
-        </tr>
-      `;
-    });
-
-    html += `
-          </tbody>
-        </table>
-      </body>
-      </html>
-    `;
-
-    const blob = new Blob([html], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Budget_Report_Export.xlsx`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Budget Report');
+    XLSX.writeFile(workbook, 'Budget_Report_Export.xlsx');
   };
 
   // CSV Export for e-Lekha Transactions Table
@@ -2652,72 +2606,25 @@ export default function App() {
 
   // Excel Export for e-Lekha Transactions Table
   const handleExportElekhaExcel = () => {
-    let html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8">
-        <style>
-          table { border-collapse: collapse; font-family: Calibri, sans-serif; font-size: 10pt; }
-          th, td { border: 1px solid #d4d4d8; padding: 6px 10px; }
-          th { background-color: #0f172a; color: #f8fafc; font-weight: bold; }
-          .text-right { text-align: right; }
-        </style>
-      </head>
-      <body>
-        <table>
-          <thead>
-            <tr>
-              <th>TE Number</th>
-              <th>Txn Date</th>
-              <th>Month</th>
-              <th>Region</th>
-              <th>DDO</th>
-              <th>HO</th>
-              <th>Division</th>
-              <th>HOA</th>
-              <th>Description</th>
-              <th>Receipts</th>
-              <th>Payments</th>
-              <th>Remark</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
+    const exportData = filteredElekhaData.map(row => ({
+      'TE Number': row['TE Number'] || '–',
+      'Txn Date': row['Txn Date'] || '–',
+      'Month': row['Month'] || '–',
+      'Region': row['Region'] || '–',
+      'DDO Code': row['DDO Code'] || '–',
+      'HO': row['HO'] || '–',
+      'Division': row['Division'] || '–',
+      'HOA': row['HOA'] || '–',
+      'Description': row['Description'] || '–',
+      'Receipt (Rs.)': parseNumber(row['Receipt (Rs.)']),
+      'Payment (Rs.)': parseNumber(row['Payment (Rs.)']),
+      'Remark': row['Remark'] || '–'
+    }));
 
-    filteredElekhaData.forEach(row => {
-      html += `
-        <tr>
-          <td>${row['TE Number'] || '–'}</td>
-          <td>${row['Txn Date'] || '–'}</td>
-          <td>${row['Month'] || '–'}</td>
-          <td>${row['Region'] || '–'}</td>
-          <td>${row['DDO Code'] || '–'}</td>
-          <td>${row['HO'] || '–'}</td>
-          <td>${row['Division'] || '–'}</td>
-          <td>${row['HOA'] || '–'}</td>
-          <td>${row['Description'] || '–'}</td>
-          <td class="text-right">${row['Receipt (Rs.)'] || '–'}</td>
-          <td class="text-right">${row['Payment (Rs.)'] || '–'}</td>
-          <td>${row['Remark'] || '–'}</td>
-        </tr>
-      `;
-    });
-
-    html += `
-          </tbody>
-        </table>
-      </body>
-      </html>
-    `;
-
-    const blob = new Blob([html], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `e-Lekha_Transactions_Export.xlsx`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'e-Lekha Transactions');
+    XLSX.writeFile(workbook, 'e-Lekha_Transactions_Export.xlsx');
   };
 
   // CSV Export for Vertical Revenue Comparison Matrix
@@ -2800,123 +2707,84 @@ export default function App() {
   const handleExportExcel = () => {
     if (!verticalRevenueReportData) return;
     const { uniqueUnits, categoriesOrder, groupedHoas, p1Totals, p2Totals, p1CatTotals, p2CatTotals, rowP1Gross, rowP2Gross, catP1Gross, catP2Gross, grandP1Gross, grandP2Gross, unitP1Gross, unitP2Gross } = verticalRevenueReportData;
-    
-    let html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8">
-        <style>
-          table { border-collapse: collapse; font-family: Calibri, sans-serif; font-size: 10pt; }
-          th, td { border: 1px solid #d4d4d8; padding: 6px 10px; }
-          th { background-color: #0f172a; color: #f8fafc; font-weight: bold; }
-          .ccs-row { background-color: #f0f9ff; color: #0284c7; }
-          .ccs-total { background-color: #bae6fd; color: #0369a1; font-weight: bold; }
-          .fs-row { background-color: #f0fdf4; color: #16a34a; }
-          .fs-total { background-color: #bbf7d0; color: #15803d; font-weight: bold; }
-          .irgb-row { background-color: #fff7ed; color: #ea580c; }
-          .irgb-total { background-color: #fed7aa; color: #c2410c; font-weight: bold; }
-          .mo-row { background-color: #faf5ff; color: #9333ea; }
-          .mo-total { background-color: #e9d5ff; color: #7e22ce; font-weight: bold; }
-          .parcel-row { background-color: #fff1f2; color: #e11d48; }
-          .parcel-total { background-color: #fecdd3; color: #be123c; font-weight: bold; }
-          .grand-total-row { background-color: #f4f4f5; color: #18181b; font-weight: bold; }
-          .text-center { text-align: center; }
-          .text-right { text-align: right; }
-        </style>
-      </head>
-      <body>
-        <table>
-          <thead>
-            <tr>
-              <th rowspan="2">Category</th>
-              <th rowspan="2">HOA</th>
-              <th rowspan="2">Description</th>
-    `;
 
+    const aoaData = [];
+
+    // Header Row 1
+    const headerRow1 = ['Category', 'HOA', 'Description'];
     uniqueUnits.forEach(g => {
-      html += `<th colspan="2" class="text-center">${g.label}</th>`;
+      headerRow1.push(g.label, '');
     });
+    headerRow1.push('Gross Total', '');
+    aoaData.push(headerRow1);
 
-    html += `<th colspan="2" class="text-center">Gross Total</th>`;
-
-    html += `
-            </tr>
-            <tr>
-    `;
-
+    // Header Row 2
+    const headerRow2 = ['', '', ''];
     uniqueUnits.forEach(() => {
-      html += `<th class="text-center">${getPeriodLabel(1)}</th><th class="text-center">${getPeriodLabel(2)}</th>`;
+      headerRow2.push(getPeriodLabel(1), getPeriodLabel(2));
     });
+    headerRow2.push(getPeriodLabel(1), getPeriodLabel(2));
+    aoaData.push(headerRow2);
 
-    html += `<th class="text-center">${getPeriodLabel(1)}</th><th class="text-center">${getPeriodLabel(2)}</th>`;
-
-    html += `
-            </tr>
-          </thead>
-          <tbody>
-    `;
-
+    // Data Rows
     categoriesOrder.forEach(cat => {
       const hoas = groupedHoas[cat] || [];
-      const clsRow = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}`;
-      const clsTotal = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}-total`;
 
       // If Detail, show individual HOAs
       if (generatedConfig.reportType === 'Detail') {
         hoas.forEach(hoa => {
           const hoaCode = String(hoa['HOA Code'] || '').trim();
-          html += `<tr><td class="${clsRow}">${cat}</td><td>${hoaCode}</td><td>${hoa['Description']}</td>`;
+          const row = [cat, hoaCode, hoa['Description'] || ''];
           uniqueUnits.forEach(g => {
             const v1 = p1Totals[`${hoaCode}_${g.name}`] || 0;
             const v2 = p2Totals[`${hoaCode}_${g.name}`] || 0;
-            html += `<td class="text-right">${v1 ? v1.toFixed(2) : '-'}</td><td class="text-right">${v2 ? v2.toFixed(2) : '-'}</td>`;
+            row.push(v1 ? Number(v1.toFixed(2)) : 0);
+            row.push(v2 ? Number(v2.toFixed(2)) : 0);
           });
-          html += `<td class="text-right" style="font-weight:bold">${rowP1Gross[hoaCode] ? rowP1Gross[hoaCode].toFixed(2) : '-'}</td><td class="text-right" style="font-weight:bold">${rowP2Gross[hoaCode] ? rowP2Gross[hoaCode].toFixed(2) : '-'}</td>`;
-          html += `</tr>`;
+          const g1 = rowP1Gross[hoaCode] || 0;
+          const g2 = rowP2Gross[hoaCode] || 0;
+          row.push(g1 ? Number(g1.toFixed(2)) : 0);
+          row.push(g2 ? Number(g2.toFixed(2)) : 0);
+          aoaData.push(row);
         });
       }
 
       // Subtotal Row
-      html += `<tr class="${clsTotal}"><td class="${clsTotal}">${cat} Total</td><td></td><td></td>`;
+      const subtotalRow = [`${cat} Total`, '', ''];
       uniqueUnits.forEach(g => {
         const c1 = p1CatTotals[`${cat}_${g.name}`] || 0;
         const c2 = p2CatTotals[`${cat}_${g.name}`] || 0;
-        html += `<td class="text-right">${c1 ? c1.toFixed(2) : '-'}</td><td class="text-right">${c2 ? c2.toFixed(2) : '-'}</td>`;
+        subtotalRow.push(c1 ? Number(c1.toFixed(2)) : 0);
+        subtotalRow.push(c2 ? Number(c2.toFixed(2)) : 0);
       });
-      html += `<td class="text-right" style="font-weight:bold">${catP1Gross[cat] ? catP1Gross[cat].toFixed(2) : '-'}</td><td class="text-right" style="font-weight:bold">${catP2Gross[cat] ? catP2Gross[cat].toFixed(2) : '-'}</td>`;
-      html += `</tr>`;
+      const cg1 = catP1Gross[cat] || 0;
+      const cg2 = catP2Gross[cat] || 0;
+      subtotalRow.push(cg1 ? Number(cg1.toFixed(2)) : 0);
+      subtotalRow.push(cg2 ? Number(cg2.toFixed(2)) : 0);
+      aoaData.push(subtotalRow);
     });
 
     // Grand Total Bottom Row
-    html += `<tr class="grand-total-row"><td>GROSS TOTAL</td><td></td><td></td>`;
+    const grandRow = ['GROSS TOTAL', '', ''];
     uniqueUnits.forEach(g => {
       const u1 = unitP1Gross[g.name] || 0;
       const u2 = unitP2Gross[g.name] || 0;
-      html += `<td class="text-right">${u1 ? u1.toFixed(2) : '-'}</td><td class="text-right">${u2 ? u2.toFixed(2) : '-'}</td>`;
+      grandRow.push(u1 ? Number(u1.toFixed(2)) : 0);
+      grandRow.push(u2 ? Number(u2.toFixed(2)) : 0);
     });
-    html += `<td class="text-right">${grandP1Gross ? grandP1Gross.toFixed(2) : '-'}</td><td class="text-right">${grandP2Gross ? grandP2Gross.toFixed(2) : '-'}</td>`;
-    html += `</tr>`;
+    grandRow.push(grandP1Gross ? Number(grandP1Gross.toFixed(2)) : 0);
+    grandRow.push(grandP2Gross ? Number(grandP2Gross.toFixed(2)) : 0);
+    aoaData.push(grandRow);
 
-    html += `
-          </tbody>
-        </table>
-      </body>
-      </html>
-    `;
+    const worksheet = XLSX.utils.aoa_to_sheet(aoaData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Vertical Revenue Report');
 
-    const blob = new Blob([html], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    
     const rangeText = generatedConfig.type === 'Month' 
       ? `P1_${generatedConfig.p1From}_to_${generatedConfig.p1To}_P2_${generatedConfig.p2From}_to_${generatedConfig.p2To}`
       : `P1_${generatedConfig.p1FromDate}_to_${generatedConfig.p1ToDate}_P2_${generatedConfig.p2FromDate}_to_${generatedConfig.p2ToDate}`;
 
-    link.setAttribute('download', `Vertical_Revenue_Report_${rangeText}.xlsx`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    XLSX.writeFile(workbook, `Vertical_Revenue_Report_${rangeText}.xlsx`);
   };
 
   if (isLoading) {
@@ -3992,6 +3860,7 @@ export default function App() {
                                         <th>Txn Date</th>
                                         <th>Month</th>
                                         <th>Description</th>
+                                        <th className="text-right">Receipt Amount (Rs.)</th>
                                         <th className="text-right">Payment Amount (Rs.)</th>
                                         <th>Remark</th>
                                       </tr>
@@ -4002,7 +3871,10 @@ export default function App() {
                                           <td>{txn['Txn Date'] || '–'}</td>
                                           <td>{txn['Month'] || '–'}</td>
                                           <td>{txn['Description'] || '–'}</td>
-                                          <td className="text-right" style={{ color: 'var(--color-warning)', fontWeight: 600 }}>
+                                          <td className="text-right" style={{ color: parseNumber(txn['Receipt (Rs.)']) > 0 ? 'var(--color-success)' : 'inherit', fontWeight: 600 }}>
+                                            {txn['Receipt (Rs.)'] || '–'}
+                                          </td>
+                                          <td className="text-right" style={{ color: parseNumber(txn['Payment (Rs.)']) > 0 ? 'var(--color-warning)' : 'inherit', fontWeight: 600 }}>
                                             {txn['Payment (Rs.)'] || '–'}
                                           </td>
                                           <td>{txn['Remark'] || '–'}</td>
