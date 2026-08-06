@@ -797,30 +797,44 @@ export default function App() {
             
           if (countError) throw countError;
           const totalRows = count || 0;
+          if (totalRows === 0) return [];
           
           const pages = Math.ceil(totalRows / limit);
-          const promises = [];
-          
-          for (let i = 0; i < pages; i++) {
-            const from = i * limit;
-            const to = from + limit - 1;
-            promises.push(
-              supabase
-                .from(tableName)
-                .select('*')
-                .range(from, to)
-                .then(({ data, error }) => {
-                  if (error) throw error;
-                  return data;
-                })
-            );
-          }
-          
           const results = [];
           const batchSize = 15;
-          for (let i = 0; i < promises.length; i += batchSize) {
-            const batch = promises.slice(i, i + batchSize);
-            const batchResults = await Promise.all(batch);
+          const tablesWithId = ['e-Lekha', 'Budget', 'Revenue DDO Mapping', 'users'];
+          const shouldOrderById = tablesWithId.includes(tableName);
+          
+          for (let batchStart = 0; batchStart < pages; batchStart += batchSize) {
+            const batchEnd = Math.min(batchStart + batchSize, pages);
+            const batchPromises = [];
+            
+            for (let i = batchStart; i < batchEnd; i++) {
+              const from = i * limit;
+              const to = from + limit - 1;
+              
+              const fetchChunkWithRetry = async (retries = 3) => {
+                for (let attempt = 0; attempt < retries; attempt++) {
+                  try {
+                    let query = supabase.from(tableName).select('*');
+                    if (shouldOrderById) {
+                      query = query.order('id', { ascending: true });
+                    }
+                    const { data, error } = await query.range(from, to);
+                    if (error) throw error;
+                    if (data) return data;
+                  } catch (err) {
+                    if (attempt === retries - 1) throw err;
+                    await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+                  }
+                }
+                return [];
+              };
+              
+              batchPromises.push(fetchChunkWithRetry());
+            }
+            
+            const batchResults = await Promise.all(batchPromises);
             results.push(...batchResults.flat());
           }
           return results;
