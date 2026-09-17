@@ -750,6 +750,7 @@ export default function App() {
   // Search by percentage consumed
   const [pctSearchVal, setPctSearchVal] = useState('');
   const [pctSearchType, setPctSearchType] = useState('apt'); // 'apt' / 'elekha'
+  const [pctSearchCond, setPctSearchCond] = useState('more'); // 'more' / 'less'
 
   // Analysis Mode State
   const [isAnalysisMode, setIsAnalysisMode] = useState(false);
@@ -1387,8 +1388,14 @@ export default function App() {
         const targetPct = parseFloat(pctSearchVal);
         if (!isNaN(targetPct)) {
           const valToCompare = pctSearchType === 'apt' ? row['APT Consumed %'] : row['e-Lekha Consumed %'];
-          if (valToCompare < targetPct) {
-            return false;
+          if (pctSearchCond === 'less') {
+            if (valToCompare > targetPct) {
+              return false;
+            }
+          } else {
+            if (valToCompare < targetPct) {
+              return false;
+            }
           }
         }
       }
@@ -1431,7 +1438,7 @@ export default function App() {
   // Budget filtered data (computed locally in React)
   const filteredBudgetData = useMemo(() => {
     return getFilteredDataForColumn('');
-  }, [mappedBudgetData, budgetSearch, budgetRegion, budgetFilterStatus, budgetColumnFilters, pctSearchVal, pctSearchType, isAnalysisMode, selectedAnalysisType]);
+  }, [mappedBudgetData, budgetSearch, budgetRegion, budgetFilterStatus, budgetColumnFilters, pctSearchVal, pctSearchType, pctSearchCond, isAnalysisMode, selectedAnalysisType]);
 
   // Budget Paginated Data
   const paginatedBudgetData = useMemo(() => {
@@ -3400,7 +3407,18 @@ export default function App() {
                     textAlign: 'center'
                   }}
                 />
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>% or more</span>
+                <select 
+                  className="custom-select" 
+                  value={pctSearchCond} 
+                  onChange={(e) => {
+                    setPctSearchCond(e.target.value);
+                    setBudgetPage(0);
+                  }}
+                  style={{ padding: '4px 8px', fontSize: '0.8rem', minWidth: '110px', height: '32px' }}
+                >
+                  <option value="more">% or more</option>
+                  <option value="less">% or less</option>
+                </select>
 
                 <button
                   type="button"
