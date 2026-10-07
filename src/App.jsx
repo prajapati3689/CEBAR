@@ -1345,8 +1345,28 @@ export default function App() {
       })
       .filter(Boolean);
 
-    // 5. Combine existing mapped rows and virtual rows
-    return [...existingMappedRows, ...virtualRows];
+    // 5. Combine existing mapped rows and virtual rows, filtering out nil rows
+    // A row is considered a nil row (and hidden) if APT Alloted, APT Consumed, and e-Lekha Consumed are all 0,
+    // AND there are no e-Lekha transactions in the expand option. If e-Lekha transactions exist (expand option),
+    // the row is shown even if the net e-Lekha consumed is 0.
+    const allRows = [...existingMappedRows, ...virtualRows];
+    return allRows.filter(row => {
+      const aptAllotedVal = parseNumber(row['APT Alloted']);
+      const aptConsumedVal = parseNumber(row['APT Consumed']);
+      const elekhaConsumedVal = parseNumber(row['e-lekha Consumed']);
+
+      const hasAptAlloted = aptAllotedVal !== 0;
+      const hasAptConsumed = aptConsumedVal !== 0;
+      const hasElekhaConsumed = elekhaConsumedVal !== 0;
+
+      const unitName = String(row['Name of Unit (HO/Division)'] || '').trim().toLowerCase();
+      const hoa = String(row['HOA'] || '').trim().toLowerCase();
+      const key = `${unitName}_${hoa}`;
+      const lookup = elekhaLookupMap[key];
+      const hasExpandTxns = !!(lookup && lookup.txns && lookup.txns.length > 0);
+
+      return hasAptAlloted || hasAptConsumed || hasElekhaConsumed || hasExpandTxns;
+    });
   }, [budgetData, elekhaLookupMap, elekhaData]);
 
   // Helper for cascading filters on Budget
@@ -2849,87 +2869,50 @@ export default function App() {
 
   if (!isLoggedIn) {
     return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-        backgroundColor: 'var(--bg-app)',
-        fontFamily: 'var(--font-sans)',
-        padding: '20px',
-        position: 'relative'
-      }}>
-        <div style={{
-          width: '100%',
-          maxWidth: '450px',
-          backgroundColor: 'var(--bg-card)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '40px',
-          boxShadow: 'var(--shadow-premium)',
-          border: '1px solid var(--border-color)',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🪙</div>
-          <h1 style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: '1.8rem',
-            fontWeight: 800,
-            color: 'var(--text-primary)',
-            marginBottom: '10px'
-          }}>CEBAR</h1>
-          <p style={{
-            fontSize: '0.9rem',
-            color: 'var(--text-secondary)',
-            marginBottom: '30px',
-            lineHeight: '1.4'
-          }}>
+      <div className="auth-page">
+        <div className="auth-blob b1"></div>
+        <div className="auth-blob b2"></div>
+        <div className="auth-blob b3"></div>
+        <div className="auth-blob b4"></div>
+
+        <div className="auth-card">
+          <span className="auth-logo-coin">🪙</span>
+          <span className="auth-brand-3d">CEBAR</span>
+          <p className="auth-tagline">
             Circle Expenditure, Budget and Accounting Review
           </p>
 
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>User ID</label>
-              <div style={{ position: 'relative' }}>
-                <User size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <form onSubmit={handleLogin} className="auth-form">
+            <div>
+              <label className="auth-field-label">User ID</label>
+              <div className="auth-input-wrap">
+                <User size={16} className="auth-input-icon" />
                 <input 
                   type="text" 
                   placeholder="Enter 8-digit User ID" 
                   value={loginUserId}
                   onChange={(e) => setLoginUserId(e.target.value.replace(/\D/g, '').substring(0, 8))}
-                  className="custom-input"
-                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
+                  className="auth-input"
                 />
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Password</label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <div>
+              <label className="auth-field-label">Password</label>
+              <div className="auth-input-wrap">
+                <Lock size={16} className="auth-input-icon" />
                 <input 
                   type={showPassword ? 'text' : 'password'} 
                   placeholder="Enter Password" 
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
-                  className="custom-input"
-                  style={{ paddingLeft: '38px', paddingRight: '40px', width: '100%', height: '42px', boxSizing: 'border-box' }}
+                  className="auth-input"
+                  style={{ paddingRight: '44px' }}
                 />
                 <button 
                   type="button" 
                   onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
+                  className="auth-eye-btn"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -2937,51 +2920,19 @@ export default function App() {
             </div>
 
             {loginError && (
-              <div style={{
-                color: 'var(--color-error)',
-                fontSize: '0.85rem',
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                padding: '10px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid rgba(239, 68, 68, 0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
+              <div className="auth-error">
                 <AlertTriangle size={16} />
                 <span>{loginError}</span>
               </div>
             )}
 
-            <button 
-              type="submit" 
-              className="pg-btn" 
-              style={{
-                width: '100%',
-                height: '42px',
-                backgroundColor: 'var(--color-primary)',
-                color: '#14210f',
-                fontWeight: 'bold',
-                border: 'none',
-                marginTop: '10px'
-              }}
-            >
+            <button type="submit" className="auth-submit-btn">
               Sign In
             </button>
           </form>
         </div>
 
-        <div style={{
-          position: 'absolute',
-          bottom: '20px',
-          right: '20px',
-          fontSize: '0.75rem',
-          color: 'var(--text-muted)',
-          textAlign: 'right',
-          fontFamily: 'monospace',
-          maxWidth: '300px',
-          lineHeight: '1.4'
-        }}>
+        <div className="auth-footer-credit">
           Desigend and developed by Vishal Gorvadiya, AAO, O/o The Cheif PMG, Ahd.
         </div>
       </div>
@@ -2990,105 +2941,56 @@ export default function App() {
 
   if (currentUser && currentUser.needs_password_change) {
     return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-        backgroundColor: 'var(--bg-app)',
-        fontFamily: 'var(--font-sans)',
-        padding: '20px',
-        position: 'relative'
-      }}>
-        <div style={{
-          width: '100%',
-          maxWidth: '450px',
-          backgroundColor: 'var(--bg-card)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '40px',
-          boxShadow: 'var(--shadow-premium)',
-          border: '1px solid var(--border-color)',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🔑</div>
-          <h1 style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: '1.5rem',
-            fontWeight: 800,
-            color: 'var(--text-primary)',
-            marginBottom: '10px'
-          }}>Change Password</h1>
-          <p style={{
-            fontSize: '0.85rem',
-            color: 'var(--text-secondary)',
-            marginBottom: '30px',
-            lineHeight: '1.4'
-          }}>
+      <div className="auth-page">
+        <div className="auth-blob b1"></div>
+        <div className="auth-blob b2"></div>
+        <div className="auth-blob b3"></div>
+        <div className="auth-blob b4"></div>
+
+        <div className="auth-card">
+          <span className="auth-logo-coin">🔑</span>
+          <span className="auth-brand-3d" style={{ fontSize: '1.8rem' }}>Change Password</span>
+          <p className="auth-tagline">
             For security reasons, you are required to change your password from the default <strong>Ahd@12345</strong> before accessing the dashboard.
           </p>
 
-          <form onSubmit={handlePasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>New Password</label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <form onSubmit={handlePasswordChange} className="auth-form">
+            <div>
+              <label className="auth-field-label">New Password</label>
+              <div className="auth-input-wrap">
+                <Lock size={16} className="auth-input-icon" />
                 <input 
                   type="password" 
                   placeholder="Enter New Password" 
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="custom-input"
-                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
+                  className="auth-input"
                 />
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Confirm New Password</label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <div>
+              <label className="auth-field-label">Confirm New Password</label>
+              <div className="auth-input-wrap">
+                <Lock size={16} className="auth-input-icon" />
                 <input 
                   type="password" 
                   placeholder="Confirm New Password" 
                   value={confirmNewPassword}
                   onChange={(e) => setConfirmNewPassword(e.target.value)}
-                  className="custom-input"
-                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
+                  className="auth-input"
                 />
               </div>
             </div>
 
             {passwordChangeError && (
-              <div style={{
-                color: 'var(--color-error)',
-                fontSize: '0.85rem',
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                padding: '10px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid rgba(239, 68, 68, 0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
+              <div className="auth-error">
                 <AlertTriangle size={16} />
                 <span>{passwordChangeError}</span>
               </div>
             )}
 
-            <button 
-              type="submit" 
-              className="pg-btn" 
-              style={{
-                width: '100%',
-                height: '42px',
-                backgroundColor: 'var(--color-primary)',
-                color: '#14210f',
-                fontWeight: 'bold',
-                border: 'none',
-                marginTop: '10px'
-              }}
-            >
+            <button type="submit" className="auth-submit-btn">
               Update Password
             </button>
           </form>
@@ -3103,7 +3005,13 @@ export default function App() {
       {/* 1. Header Area */}
       <header className="dashboard-header">
         <div className="header-left">
-          <h1>🪙 CEBAR - Circle Expenditure, Budget and Accounting Review</h1>
+          <h1>
+            <span className="brand-3d-wrap">
+              <span className="brand-coin">🪙</span>
+              <span className="brand-3d">CEBAR</span>
+            </span>
+            <span className="brand-subtitle">Circle Expenditure, Budget &amp; Accounting Review</span>
+          </h1>
         </div>
         <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           {currentUser && (
