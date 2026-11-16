@@ -750,7 +750,6 @@ export default function App() {
   // Search by percentage consumed
   const [pctSearchVal, setPctSearchVal] = useState('');
   const [pctSearchType, setPctSearchType] = useState('apt'); // 'apt' / 'elekha'
-  const [pctSearchCond, setPctSearchCond] = useState('more'); // 'more' / 'less'
 
   // Analysis Mode State
   const [isAnalysisMode, setIsAnalysisMode] = useState(false);
@@ -889,6 +888,23 @@ export default function App() {
           }
         });
 
+        const normName = (v) => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+        // Office Name -> Region (from office_mapping)
+        const officeNameToRegionMap = {};
+        mapping.forEach(m => {
+          const n = normName(m['Office Name']);
+          const r = String(m['Region'] || '').trim();
+          if (n && r) officeNameToRegionMap[n] = r;
+        });
+
+        // DDO Code -> { HO, Division, Region } (from Revenue DDO Mapping)
+        const ddoCodeMap = {};
+        ddoMap.forEach(d => {
+          const code = String(d['DDO Code'] || '').trim().split('.')[0];
+          if (code) ddoCodeMap[code] = { ho: (d.HO || '').trim(), division: (d.Division || '').trim(), region: (d.Region || '').trim() };
+        });
+
         // Build description-to-HOA map from Revenue_hoa (do not overwrite with generic e-Lekha codes!)
         const descToHoaMap = {};
         hoas.forEach(item => {
@@ -970,10 +986,26 @@ export default function App() {
             mappedHoa = matchedDetailCode;
           }
           
+          const cleanDdo = String(row['DDO Code'] || '').trim().split('.')[0];
+          const ddo = ddoCodeMap[cleanDdo];
+
+          // e-Lekha tab Region: from office_mapping (by HO name); fallbacks only if no match
+          const officeRegion =
+            officeNameToRegionMap[normName(row.HO)] ||
+            (ddo ? officeNameToRegionMap[normName(ddo.ho)] : '') ||
+            '';
+
           return {
             ...row,
             HOA: originalHoa,
-            MappedHOA: mappedHoa
+            MappedHOA: mappedHoa,
+            SourceRegion: row.Region,
+            Region: officeRegion || (ddo ? ddo.region : '') || row.Region || '',
+            // Vertical Revenue fields: strictly from "Revenue DDO Mapping"
+            VR_DDO: cleanDdo,
+            VR_HO: ddo ? ddo.ho : (row.HO || ''),
+            VR_Division: ddo ? ddo.division : (row.Division || ''),
+            VR_Region: ddo ? ddo.region : (row.SourceRegion || row.Region || '')
           };
         });
 
@@ -1138,13 +1170,10 @@ export default function App() {
   }, [currentUser, officeNameToIdMap]);
 
   const getOfficeIdForElekhaRow = useCallback((row) => {
-    const rawDdoCode = String(row['DDO Code'] || '').trim();
-    const cleanDdoCode = rawDdoCode.split('.')[0];
-    const mapped = ddoLookupMap[cleanDdoCode];
-    const hoName = mapped ? mapped.ho : row.HO;
+    const hoName = row.VR_HO || row.HO;
     if (!hoName) return null;
     return officeNameToIdMap[hoName.trim().toLowerCase()] || null;
-  }, [ddoLookupMap, officeNameToIdMap]);
+  }, [officeNameToIdMap]);
 
   const hasRight = useCallback((tabKey) => {
     if (!currentUser) return false;
@@ -1345,29 +1374,23 @@ export default function App() {
       })
       .filter(Boolean);
 
-    // 5. Combine existing mapped rows and virtual rows, filtering out nil rows
-    // A row is considered a nil row (and hidden) if APT Alloted, APT Consumed, and e-Lekha Consumed are all 0,
-    // AND there are no e-Lekha transactions in the expand option. If e-Lekha transactions exist (expand option),
-    // the row is shown even if the net e-Lekha consumed is 0.
-    const allRows = [...existingMappedRows, ...virtualRows];
-    return allRows.filter(row => {
-      const aptAllotedVal = parseNumber(row['APT Alloted']);
-      const aptConsumedVal = parseNumber(row['APT Consumed']);
-      const elekhaConsumedVal = parseNumber(row['e-lekha Consumed']);
-
-      const hasAptAlloted = aptAllotedVal !== 0;
-      const hasAptConsumed = aptConsumedVal !== 0;
-      const hasElekhaConsumed = elekhaConsumedVal !== 0;
-
-      const unitName = String(row['Name of Unit (HO/Division)'] || '').trim().toLowerCase();
-      const hoa = String(row['HOA'] || '').trim().toLowerCase();
-      const key = `${unitName}_${hoa}`;
-      const lookup = elekhaLookupMap[key];
-      const hasExpandTxns = !!(lookup && lookup.txns && lookup.txns.length > 0);
-
-      return hasAptAlloted || hasAptConsumed || hasElekhaConsumed || hasExpandTxns;
-    });
+    // 5. Combine existing mapped rows and virtual rows
+    return [...existingMappedRows, ...virtualRows];
   }, [budgetData, elekhaLookupMap, elekhaData]);
+
+  // Region dropdown for Budget = unique values of the table's "Region" column
+  const budgetRegionOptions = useMemo(() => {
+    const set = new Set();
+    mappedBudgetData.forEach(row => {
+      const r = String(row.Region || '').trim();
+      if (!r) return;
+      if (currentUser && currentUser.offices && currentUser.offices.length > 0) {
+        if (!isOfficeAllowed(row['Office ID'], row['Name of Unit (HO/Division)'])) return;
+      }
+      set.add(r);
+    });
+    return Array.from(set).sort();
+  }, [mappedBudgetData, currentUser, isOfficeAllowed]);
 
   // Helper for cascading filters on Budget
   const getFilteredDataForColumn = (excludeColumnName) => {
@@ -1408,14 +1431,8 @@ export default function App() {
         const targetPct = parseFloat(pctSearchVal);
         if (!isNaN(targetPct)) {
           const valToCompare = pctSearchType === 'apt' ? row['APT Consumed %'] : row['e-Lekha Consumed %'];
-          if (pctSearchCond === 'less') {
-            if (valToCompare > targetPct) {
-              return false;
-            }
-          } else {
-            if (valToCompare < targetPct) {
-              return false;
-            }
+          if (valToCompare < targetPct) {
+            return false;
           }
         }
       }
@@ -1458,7 +1475,7 @@ export default function App() {
   // Budget filtered data (computed locally in React)
   const filteredBudgetData = useMemo(() => {
     return getFilteredDataForColumn('');
-  }, [mappedBudgetData, budgetSearch, budgetRegion, budgetFilterStatus, budgetColumnFilters, pctSearchVal, pctSearchType, pctSearchCond, isAnalysisMode, selectedAnalysisType]);
+  }, [mappedBudgetData, budgetSearch, budgetRegion, budgetFilterStatus, budgetColumnFilters, pctSearchVal, pctSearchType, isAnalysisMode, selectedAnalysisType]);
 
   // Budget Paginated Data
   const paginatedBudgetData = useMemo(() => {
@@ -1719,17 +1736,14 @@ export default function App() {
     for (let i = 0; i < len; i++) {
       const row = elekhaData[i];
       const hoa = String(row.MappedHOA || row.HOA || '').trim();
-      const rawDdoCode = String(row['DDO Code'] || '').trim();
-      const cleanDdoCode = rawDdoCode.split('.')[0]; // strip decimal parts e.g. 102472.0
+      const cleanDdoCode = row.VR_DDO || String(row['DDO Code'] || '').trim().split('.')[0];
       
       if (!hoa) continue;
 
-      // Look up DDO code mapping
-      const mapped = ddoLookupMap[cleanDdoCode];
-      
-      const hoVal = mapped ? mapped.ho : row.HO;
-      const divisionVal = mapped ? mapped.division : row.Division;
-      const regionVal = mapped ? mapped.region : row.Region;
+      // DDO Code / HO / Division / Region strictly from "Revenue DDO Mapping"
+      const hoVal = row.VR_HO;
+      const divisionVal = row.VR_Division;
+      const regionVal = row.VR_Region;
 
       // Allowed Office filter
       if (currentUser && currentUser.offices && currentUser.offices.length > 0) {
@@ -1932,7 +1946,7 @@ export default function App() {
       unitP1Gross,
       unitP2Gross
     };
-  }, [generatedConfig, elekhaData, hoaList, uniqueMonths, ddoLookupMap, revenueColumnFilters]);
+  }, [generatedConfig, elekhaData, hoaList, uniqueMonths, ddoLookupMap, revenueColumnFilters, currentUser, isOfficeAllowed, getOfficeIdForElekhaRow]);
 
   // Category KPIs calculation for Vertical Revenue comparison tab
   const revenueKpis = useMemo(() => {
@@ -2869,50 +2883,87 @@ export default function App() {
 
   if (!isLoggedIn) {
     return (
-      <div className="auth-page">
-        <div className="auth-blob b1"></div>
-        <div className="auth-blob b2"></div>
-        <div className="auth-blob b3"></div>
-        <div className="auth-blob b4"></div>
-
-        <div className="auth-card">
-          <span className="auth-logo-coin">🪙</span>
-          <span className="auth-brand-3d">CEBAR</span>
-          <p className="auth-tagline">
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: 'var(--bg-app)',
+        fontFamily: 'var(--font-sans)',
+        padding: '20px',
+        position: 'relative'
+      }}>
+        <div style={{
+          width: '100%',
+          maxWidth: '450px',
+          backgroundColor: 'var(--bg-card)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '40px',
+          boxShadow: 'var(--shadow-premium)',
+          border: '1px solid var(--border-color)',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🪙</div>
+          <h1 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '1.8rem',
+            fontWeight: 800,
+            color: 'var(--text-primary)',
+            marginBottom: '10px'
+          }}>CEBAR</h1>
+          <p style={{
+            fontSize: '0.9rem',
+            color: 'var(--text-secondary)',
+            marginBottom: '30px',
+            lineHeight: '1.4'
+          }}>
             Circle Expenditure, Budget and Accounting Review
           </p>
 
-          <form onSubmit={handleLogin} className="auth-form">
-            <div>
-              <label className="auth-field-label">User ID</label>
-              <div className="auth-input-wrap">
-                <User size={16} className="auth-input-icon" />
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>User ID</label>
+              <div style={{ position: 'relative' }}>
+                <User size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input 
                   type="text" 
                   placeholder="Enter 8-digit User ID" 
                   value={loginUserId}
                   onChange={(e) => setLoginUserId(e.target.value.replace(/\D/g, '').substring(0, 8))}
-                  className="auth-input"
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
                 />
               </div>
             </div>
 
-            <div>
-              <label className="auth-field-label">Password</label>
-              <div className="auth-input-wrap">
-                <Lock size={16} className="auth-input-icon" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Password</label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input 
                   type={showPassword ? 'text' : 'password'} 
                   placeholder="Enter Password" 
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
-                  className="auth-input"
-                  style={{ paddingRight: '44px' }}
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', paddingRight: '40px', width: '100%', height: '42px', boxSizing: 'border-box' }}
                 />
                 <button 
                   type="button" 
                   onClick={() => setShowPassword(!showPassword)}
-                  className="auth-eye-btn"
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -2920,19 +2971,51 @@ export default function App() {
             </div>
 
             {loginError && (
-              <div className="auth-error">
+              <div style={{
+                color: 'var(--color-error)',
+                fontSize: '0.85rem',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                padding: '10px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
                 <AlertTriangle size={16} />
                 <span>{loginError}</span>
               </div>
             )}
 
-            <button type="submit" className="auth-submit-btn">
+            <button 
+              type="submit" 
+              className="pg-btn" 
+              style={{
+                width: '100%',
+                height: '42px',
+                backgroundColor: 'var(--color-primary)',
+                color: '#14210f',
+                fontWeight: 'bold',
+                border: 'none',
+                marginTop: '10px'
+              }}
+            >
               Sign In
             </button>
           </form>
         </div>
 
-        <div className="auth-footer-credit">
+        <div style={{
+          position: 'absolute',
+          bottom: '20px',
+          right: '20px',
+          fontSize: '0.75rem',
+          color: 'var(--text-muted)',
+          textAlign: 'right',
+          fontFamily: 'monospace',
+          maxWidth: '300px',
+          lineHeight: '1.4'
+        }}>
           Desigend and developed by Vishal Gorvadiya, AAO, O/o The Cheif PMG, Ahd.
         </div>
       </div>
@@ -2941,56 +3024,105 @@ export default function App() {
 
   if (currentUser && currentUser.needs_password_change) {
     return (
-      <div className="auth-page">
-        <div className="auth-blob b1"></div>
-        <div className="auth-blob b2"></div>
-        <div className="auth-blob b3"></div>
-        <div className="auth-blob b4"></div>
-
-        <div className="auth-card">
-          <span className="auth-logo-coin">🔑</span>
-          <span className="auth-brand-3d" style={{ fontSize: '1.8rem' }}>Change Password</span>
-          <p className="auth-tagline">
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: 'var(--bg-app)',
+        fontFamily: 'var(--font-sans)',
+        padding: '20px',
+        position: 'relative'
+      }}>
+        <div style={{
+          width: '100%',
+          maxWidth: '450px',
+          backgroundColor: 'var(--bg-card)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '40px',
+          boxShadow: 'var(--shadow-premium)',
+          border: '1px solid var(--border-color)',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🔑</div>
+          <h1 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '1.5rem',
+            fontWeight: 800,
+            color: 'var(--text-primary)',
+            marginBottom: '10px'
+          }}>Change Password</h1>
+          <p style={{
+            fontSize: '0.85rem',
+            color: 'var(--text-secondary)',
+            marginBottom: '30px',
+            lineHeight: '1.4'
+          }}>
             For security reasons, you are required to change your password from the default <strong>Ahd@12345</strong> before accessing the dashboard.
           </p>
 
-          <form onSubmit={handlePasswordChange} className="auth-form">
-            <div>
-              <label className="auth-field-label">New Password</label>
-              <div className="auth-input-wrap">
-                <Lock size={16} className="auth-input-icon" />
+          <form onSubmit={handlePasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>New Password</label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input 
                   type="password" 
                   placeholder="Enter New Password" 
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="auth-input"
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
                 />
               </div>
             </div>
 
-            <div>
-              <label className="auth-field-label">Confirm New Password</label>
-              <div className="auth-input-wrap">
-                <Lock size={16} className="auth-input-icon" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Confirm New Password</label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input 
                   type="password" 
                   placeholder="Confirm New Password" 
                   value={confirmNewPassword}
                   onChange={(e) => setConfirmNewPassword(e.target.value)}
-                  className="auth-input"
+                  className="custom-input"
+                  style={{ paddingLeft: '38px', width: '100%', height: '42px', boxSizing: 'border-box' }}
                 />
               </div>
             </div>
 
             {passwordChangeError && (
-              <div className="auth-error">
+              <div style={{
+                color: 'var(--color-error)',
+                fontSize: '0.85rem',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                padding: '10px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
                 <AlertTriangle size={16} />
                 <span>{passwordChangeError}</span>
               </div>
             )}
 
-            <button type="submit" className="auth-submit-btn">
+            <button 
+              type="submit" 
+              className="pg-btn" 
+              style={{
+                width: '100%',
+                height: '42px',
+                backgroundColor: 'var(--color-primary)',
+                color: '#14210f',
+                fontWeight: 'bold',
+                border: 'none',
+                marginTop: '10px'
+              }}
+            >
               Update Password
             </button>
           </form>
@@ -3005,13 +3137,7 @@ export default function App() {
       {/* 1. Header Area */}
       <header className="dashboard-header">
         <div className="header-left">
-          <h1>
-            <span className="brand-3d-wrap">
-              <span className="brand-coin">🪙</span>
-              <span className="brand-3d">CEBAR</span>
-            </span>
-            <span className="brand-subtitle">Circle Expenditure, Budget &amp; Accounting Review</span>
-          </h1>
+          <h1>🪙 CEBAR - Circle Expenditure, Budget and Accounting Review</h1>
         </div>
         <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           {currentUser && (
@@ -3315,18 +3441,7 @@ export default function App() {
                     textAlign: 'center'
                   }}
                 />
-                <select 
-                  className="custom-select" 
-                  value={pctSearchCond} 
-                  onChange={(e) => {
-                    setPctSearchCond(e.target.value);
-                    setBudgetPage(0);
-                  }}
-                  style={{ padding: '4px 8px', fontSize: '0.8rem', minWidth: '110px', height: '32px' }}
-                >
-                  <option value="more">% or more</option>
-                  <option value="less">% or less</option>
-                </select>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>% or more</span>
 
                 <button
                   type="button"
@@ -3388,7 +3503,7 @@ export default function App() {
                     style={{ padding: '4px 8px', fontSize: '0.8rem', height: '32px' }}
                   >
                     <option value="All">All Regions</option>
-                    {uniqueRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                    {budgetRegionOptions.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
