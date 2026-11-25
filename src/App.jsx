@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { createClient } from '@supabase/supabase-js';
-import { 
-  Search, 
-  Filter, 
-  TrendingUp, 
-  AlertTriangle, 
-  CheckCircle, 
-  RefreshCw, 
-  BarChart2, 
-  ShieldAlert, 
-  FileText, 
-  Sun, 
-  Moon, 
-  ChevronLeft, 
-  ChevronRight, 
+import {
+  Search,
+  Filter,
+  TrendingUp,
+  AlertTriangle,
+  CheckCircle,
+  RefreshCw,
+  BarChart2,
+  ShieldAlert,
+  FileText,
+  Sun,
+  Moon,
+  ChevronLeft,
+  ChevronRight,
   Coins,
   AlertCircle,
   Download,
@@ -27,12 +27,22 @@ import {
   LogOut,
   Key,
   Eye,
-  EyeOff
+  EyeOff,
+  Wrench,
+  ChevronDown,
+  FileSpreadsheet,
+  FileDown
 } from 'lucide-react';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zhrztgxvpteituddnuqu.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpocnp0Z3h2cHRlaXR1ZGRudXF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMDAzNDksImV4cCI6MjA5Nzc3NjM0OX0.RZM7IQpgr3vjI4wnmPNsph-0wI6GJb9-iLngwBlU4XI';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// =========================================================================
+// MAINTENANCE MODE TOGGLE FOR VERTICAL REVENUE
+// Change this to `false` (or remove) whenever you want to restore the normal view.
+// =========================================================================
+const IS_VERTICAL_REVENUE_UNDER_MAINTENANCE = false;
 
 // Lightweight, high-performance CSV parser
 function parseCSV(text) {
@@ -209,9 +219,9 @@ function ColumnHeaderFilter({ title, columnName, allValues, selectedFilters, onC
   return (
     <div className="header-filter-container" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
       <span className="th-title" style={{ whiteSpace: 'nowrap' }}>{title}</span>
-      <button 
-        type="button" 
-        onClick={toggle} 
+      <button
+        type="button"
+        onClick={toggle}
         className={`filter-toggle-btn ${isFiltered ? 'active' : ''}`}
         style={{
           background: 'none',
@@ -228,7 +238,7 @@ function ColumnHeaderFilter({ title, columnName, allValues, selectedFilters, onC
       </button>
 
       {isOpen && (
-        <div 
+        <div
           className="header-filter-popup"
           onClick={(e) => e.stopPropagation()}
           style={{
@@ -256,9 +266,9 @@ function ColumnHeaderFilter({ title, columnName, allValues, selectedFilters, onC
             </div>
           </div>
 
-          <input 
-            type="text" 
-            placeholder="Search..." 
+          <input
+            type="text"
+            placeholder="Search..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{
@@ -272,7 +282,7 @@ function ColumnHeaderFilter({ title, columnName, allValues, selectedFilters, onC
             }}
           />
 
-          <div 
+          <div
             style={{
               overflowY: 'auto',
               maxHeight: '180px',
@@ -292,8 +302,8 @@ function ColumnHeaderFilter({ title, columnName, allValues, selectedFilters, onC
                 const displayVal = columnName === 'Category' ? translateCategoryVal(val) : val;
                 return (
                   <label key={val} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-primary)' }}>
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       checked={isChecked}
                       onChange={(e) => handleCheckboxChange(val, e.target.checked)}
                       style={{ cursor: 'pointer' }}
@@ -326,6 +336,68 @@ const translateCategoryVal = (val) => {
   return categoryDisplayNames[val] || val;
 };
 
+// Top Scrollbar component for dual horizontal scrolling without CSS transforms
+function TopScrollbar({ targetRef }) {
+  const scrollRef = useRef(null);
+  const [contentWidth, setContentWidth] = useState(0);
+
+  useEffect(() => {
+    if (!targetRef.current) return;
+    const updateWidth = () => {
+      if (targetRef.current) {
+        setContentWidth(targetRef.current.scrollWidth);
+      }
+    };
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(targetRef.current);
+    return () => observer.disconnect();
+  }, [targetRef]);
+
+  const onScroll = () => {
+    if (scrollRef.current && targetRef.current) {
+      if (Math.abs(targetRef.current.scrollLeft - scrollRef.current.scrollLeft) > 1) {
+        targetRef.current.scrollLeft = scrollRef.current.scrollLeft;
+      }
+    }
+  };
+
+  useEffect(() => {
+    const target = targetRef.current;
+    if (!target) return;
+    const handleTargetScroll = () => {
+      if (scrollRef.current) {
+        if (Math.abs(scrollRef.current.scrollLeft - target.scrollLeft) > 1) {
+          scrollRef.current.scrollLeft = target.scrollLeft;
+        }
+      }
+    };
+    target.addEventListener('scroll', handleTargetScroll, { passive: true });
+    return () => target.removeEventListener('scroll', handleTargetScroll);
+  }, [targetRef]);
+
+  if (!contentWidth) return null;
+
+  return (
+    <div
+      ref={scrollRef}
+      onScroll={onScroll}
+      className="custom-top-scrollbar"
+      style={{
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        height: '10px',
+        width: '100%',
+        marginBottom: '4px',
+        backgroundColor: 'rgba(201, 162, 39, 0.05)',
+        borderRadius: '3px'
+      }}
+    >
+      <div style={{ width: `${contentWidth}px`, height: '1px' }} />
+    </div>
+  );
+}
+
 // SVG-based responsive Chart Components
 function SVGPieChart({ data, colors }) {
   const total = data.reduce((sum, item) => sum + (item.value || 0), 0);
@@ -343,15 +415,15 @@ function SVGPieChart({ data, colors }) {
           if (!item.value || item.value <= 0) return null;
           const percentage = item.value / total;
           const angle = percentage * 360;
-          
+
           const x1 = cx + radius * Math.cos((accumulatedAngle - 90) * Math.PI / 180);
           const y1 = cy + radius * Math.sin((accumulatedAngle - 90) * Math.PI / 180);
-          
+
           accumulatedAngle += angle;
-          
+
           const x2 = cx + radius * Math.cos((accumulatedAngle - 90) * Math.PI / 180);
           const y2 = cy + radius * Math.sin((accumulatedAngle - 90) * Math.PI / 180);
-          
+
           const largeArcFlag = angle > 180 ? 1 : 0;
           const pathData = `
             M ${cx} ${cy}
@@ -359,14 +431,14 @@ function SVGPieChart({ data, colors }) {
             A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}
             Z
           `;
-          
+
           const color = colors[idx % colors.length];
           return (
-            <path 
+            <path
               key={idx}
-              d={pathData} 
-              fill={color} 
-              stroke="var(--bg-card)" 
+              d={pathData}
+              fill={color}
+              stroke="var(--bg-card)"
               strokeWidth="1.5"
               style={{ transition: 'opacity 0.2s', cursor: 'pointer' }}
             >
@@ -424,7 +496,7 @@ function SVGBarChart({ data, colors }) {
           const x = paddingLeft + (graphWidth / data.length) * idx;
           const barWidth = (graphWidth / data.length) * 0.65;
           const barSpacing = (graphWidth / data.length) * 0.175;
-          
+
           const bar1Height = ((item.value || 0) / maxVal) * graphHeight;
           const bar1Y = paddingTop + graphHeight - bar1Height;
           const color1 = colors[0 % colors.length];
@@ -435,12 +507,12 @@ function SVGBarChart({ data, colors }) {
           return (
             <g key={idx}>
               {/* Bar 1 */}
-              <rect 
-                x={x + barSpacing} 
-                y={bar1Y} 
-                width={singleBarWidth} 
-                height={bar1Height} 
-                fill={color1} 
+              <rect
+                x={x + barSpacing}
+                y={bar1Y}
+                width={singleBarWidth}
+                height={bar1Height}
+                fill={color1}
                 rx="3"
                 style={{ transition: 'all 0.3s', cursor: 'pointer' }}
               >
@@ -449,12 +521,12 @@ function SVGBarChart({ data, colors }) {
 
               {/* Bar 2 */}
               {hasTwoBars && (
-                <rect 
-                  x={x + barSpacing + singleBarWidth + 4} 
-                  y={paddingTop + graphHeight - ((item.value2 || 0) / maxVal) * graphHeight} 
-                  width={singleBarWidth} 
-                  height={((item.value2 || 0) / maxVal) * graphHeight} 
-                  fill={colors[1 % colors.length]} 
+                <rect
+                  x={x + barSpacing + singleBarWidth + 4}
+                  y={paddingTop + graphHeight - ((item.value2 || 0) / maxVal) * graphHeight}
+                  width={singleBarWidth}
+                  height={((item.value2 || 0) / maxVal) * graphHeight}
+                  fill={colors[1 % colors.length]}
                   rx="3"
                   style={{ transition: 'all 0.3s', cursor: 'pointer' }}
                 >
@@ -463,11 +535,11 @@ function SVGBarChart({ data, colors }) {
               )}
 
               {/* Label */}
-              <text 
-                x={x + barSpacing + barWidth / 2} 
-                y={chartHeight - paddingBottom + 16} 
-                fill="var(--text-secondary)" 
-                fontSize="9" 
+              <text
+                x={x + barSpacing + barWidth / 2}
+                y={chartHeight - paddingBottom + 16}
+                fill="var(--text-secondary)"
+                fontSize="9"
                 textAnchor="middle"
               >
                 {item.label.length > 10 ? item.label.substring(0, 9) + '..' : item.label}
@@ -526,11 +598,11 @@ function SVGLineChart({ data, colors }) {
 
         {/* Path Line 1 */}
         {pathD1 && (
-          <path 
-            d={pathD1} 
-            fill="none" 
-            stroke={colors[0 % colors.length]} 
-            strokeWidth="3" 
+          <path
+            d={pathD1}
+            fill="none"
+            stroke={colors[0 % colors.length]}
+            strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -538,11 +610,11 @@ function SVGLineChart({ data, colors }) {
 
         {/* Path Line 2 */}
         {hasLine2 && pathD2 && (
-          <path 
-            d={pathD2} 
-            fill="none" 
-            stroke={colors[1 % colors.length]} 
-            strokeWidth="3" 
+          <path
+            d={pathD2}
+            fill="none"
+            stroke={colors[1 % colors.length]}
+            strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -617,6 +689,75 @@ const ELEKHA_COLUMNS = [
   'Receipt (Rs.)',
   'Payment (Rs.)',
   'Remark'
+];
+
+const OBJECT_HEADS = [
+  { code: '01', title: 'Salaries' },
+  { code: '02', title: 'Wages' },
+  { code: '04', title: 'Pensionary Charges' },
+  { code: '05', title: 'Rewards' },
+  { code: '06', title: 'Medical Treatment' },
+  { code: '07', title: 'Allowances' },
+  { code: '08', title: 'Leave Travel Concession' },
+  { code: '09', title: 'Training Expenses' },
+  { code: '11', title: 'Domestic Travel Expenses' },
+  { code: '12', title: 'Foreign Travel Expenses' },
+  { code: '13', title: 'Office Expenses' },
+  { code: '14', title: 'Rent, Rates and Taxes for Land and Buildings' },
+  { code: '16', title: 'Printing and Publication' },
+  { code: '18', title: 'Rent for Others' },
+  { code: '19', title: 'Digital Equipment' },
+  { code: '21', title: 'Material and Supplies' },
+  { code: '24', title: 'Fuels and Lubricants' },
+  { code: '25', title: 'Advertising and Publicity' },
+  { code: '26', title: 'Advertising and Publicity' },
+  { code: '27', title: 'Minor Civil and Electric Works' },
+  { code: '28', title: 'Professional Services' },
+  { code: '29', title: 'Repair and Maintenance' },
+  { code: '30', title: 'Awards and Prizes' },
+  { code: '31', title: 'Grants-in-aid-General' },
+  { code: '39', title: 'Bank and Agency Charges' },
+  { code: '49', title: 'Other Revenue Expenditure' },
+  { code: '51', title: 'Motor Vehicles' },
+  { code: '52', title: 'Machinery and Equipment' },
+  { code: '55', title: 'Loans and Advances' },
+  { code: '64', title: 'Writes Off of Losses' },
+  { code: '70', title: 'Deduct-Recoveries of Overpayments' },
+  { code: '71', title: 'Information, Computer, Telecommunications (ICT) Equipment' },
+  { code: '72', title: 'Buildings and Structures' },
+  { code: '73', title: 'Infrastructural Assets' },
+  { code: '74', title: 'Furniture and Fixtures' },
+  { code: '75', title: 'Upgradation/Procurement of Heritage Assets and Not Elsewhere Classified (n.e.c.)' },
+  { code: '77', title: 'Other Fixed Assets' }
+];
+
+const DEFAULT_SCHEME_HOAS = [
+  '520100104230052',
+  '520100104230071',
+  '520100104230174',
+  '520100101030451',
+  '520100104080152',
+  '320102103030318',
+  '320102101160049',
+  '320102103030324',
+  '520100104690052',
+  '520100104690071',
+  '520100104690072',
+  '520100104690074',
+  '320101101020226',
+  '520100104700071',
+  '320101001030113',
+  '320101001030126',
+  '320101001030134',
+  '320102003020213',
+  '320102003020109',
+  '320101001010112',
+  '320102003020211',
+  '520100101020072',
+  '520100101020073',
+  '320105053010127',
+  '520100104640771',
+  '520100003020071'
 ];
 
 export default function App() {
@@ -713,14 +854,41 @@ export default function App() {
   const [filterDdoCode, setFilterDdoCode] = useState('');
   const [filterHoa, setFilterHoa] = useState('');
   const [elekhaPage, setElekhaPage] = useState(0);
-  const [elekhaRowsPerPage, setElekhaRowsPerPage] = useState(25);
+  const [elekhaRowsPerPage, setElekhaRowsPerPage] = useState(50);
 
   // Budget Tab Filters & Pagination
   const [budgetSearch, setBudgetSearch] = useState('');
   const [budgetRegion, setBudgetRegion] = useState('All');
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [elekhaExportMenuOpen, setElekhaExportMenuOpen] = useState(false);
+  const [revenueExportMenuOpen, setRevenueExportMenuOpen] = useState(false);
+  const [balanceType, setBalanceType] = useState('elekha'); // 'elekha' (default) or 'apt'
+  const [isTabProcessing, setIsTabProcessing] = useState(false);
+
+  // Switch tab with a "Processing... Please Wait" overlay while the new tab renders
+  const switchTab = useCallback((tab) => {
+    if (tab === activeTab) return;
+    setIsTabProcessing(true);
+    // let the overlay paint first, then do the (heavy) tab render
+    setTimeout(() => {
+      setActiveTab(tab);
+      setTimeout(() => setIsTabProcessing(false), 500);
+    }, 80);
+  }, [activeTab]);
   const [budgetFilterStatus, setBudgetFilterStatus] = useState('All'); // 'All', 'Over', 'Warning', 'Safe'
+  const [budgetObjectHead, setBudgetObjectHead] = useState('All');
   const [budgetPage, setBudgetPage] = useState(0);
-  const [budgetRowsPerPage, setBudgetRowsPerPage] = useState(25);
+  const [budgetRowsPerPage, setBudgetRowsPerPage] = useState(50);
+
+  // Scheme & Non-Scheme Fund State
+  const [schemeHoaList, setSchemeHoaList] = useState([]);
+  const [schemeConsumedSource, setSchemeConsumedSource] = useState('elekha'); // 'elekha' or 'apt'
+  const [fundFilter, setFundFilter] = useState('all'); // 'all', 'scheme', 'non-scheme'
+
+  // Table Wrapper Refs for synchronized top scrollbar & sticky headers
+  const budgetTableWrapperRef = useRef(null);
+  const elekhaTableWrapperRef = useRef(null);
+  const revenueTableWrapperRef = useRef(null);
 
   // Vertical Revenue Report Controls
   const [revenueType, setRevenueType] = useState('Month'); // 'Month' / 'Day'
@@ -728,7 +896,7 @@ export default function App() {
   const [p1To, setP1To] = useState('');
   const [p2From, setP2From] = useState('');
   const [p2To, setP2To] = useState('');
-  
+
   // Custom Date range filters (when Day type is active)
   const [p1FromDate, setP1FromDate] = useState('2026-04-01');
   const [p1ToDate, setP1ToDate] = useState('2026-04-30');
@@ -794,25 +962,25 @@ export default function App() {
           const { count, error: countError } = await supabase
             .from(tableName)
             .select('*', { count: 'exact', head: true });
-            
+
           if (countError) throw countError;
           const totalRows = count || 0;
           if (totalRows === 0) return [];
-          
+
           const pages = Math.ceil(totalRows / limit);
           const results = [];
           const batchSize = 15;
           const tablesWithId = ['e-Lekha', 'Budget', 'Revenue DDO Mapping', 'users'];
           const shouldOrderById = tablesWithId.includes(tableName);
-          
+
           for (let batchStart = 0; batchStart < pages; batchStart += batchSize) {
             const batchEnd = Math.min(batchStart + batchSize, pages);
             const batchPromises = [];
-            
+
             for (let i = batchStart; i < batchEnd; i++) {
               const from = i * limit;
               const to = from + limit - 1;
-              
+
               const fetchChunkWithRetry = async (retries = 3) => {
                 for (let attempt = 0; attempt < retries; attempt++) {
                   try {
@@ -830,10 +998,10 @@ export default function App() {
                 }
                 return [];
               };
-              
+
               batchPromises.push(fetchChunkWithRetry());
             }
-            
+
             const batchResults = await Promise.all(batchPromises);
             results.push(...batchResults.flat());
           }
@@ -854,9 +1022,9 @@ export default function App() {
             return obj;
           });
         }
-        
+
         // Fetch all tables from Supabase in parallel
-        const [rawHoaList, rawMapping, rawDdoMapping, rawElekha, rawBudget, rawMetadata] = await Promise.all([
+        const [rawHoaList, rawMapping, rawDdoMapping, rawElekha, rawBudget, rawMetadata, rawSchemeHoa] = await Promise.all([
           fetchTableRows('Revenue_hoa'),
           fetchTableRows('office_mapping'),
           fetchTableRows('Revenue DDO Mapping'),
@@ -865,7 +1033,15 @@ export default function App() {
           fetchTableRows('report_metadata').catch(err => {
             console.warn('report_metadata table not found or failed to load:', err);
             return [];
-          })
+          }),
+          fetchTableRows('Scheme_HOA')
+            .catch(() => fetchTableRows('Scheme HOA'))
+            .catch(() => fetchTableRows('scheme_hoa'))
+            .catch(() => fetchTableRows('scheme HOA'))
+            .catch(err => {
+              console.warn('Scheme_HOA table not found or failed to load:', err);
+              return [];
+            })
         ]);
 
         const hoas = convertDbRowsToStrings(rawHoaList);
@@ -874,35 +1050,61 @@ export default function App() {
         const elekhaRaw = convertDbRowsToStrings(rawElekha);
         const budgetRaw = convertDbRowsToStrings(rawBudget);
         const metadata = convertDbRowsToStrings(rawMetadata);
+        const schemeHoas = convertDbRowsToStrings(rawSchemeHoa || []);
 
-        // Build mapping maps
-        const officeIdToNameMap = {};
-        const officeIdToRegionMap = {};
-        mapping.forEach(m => {
-          const id = m['Office ID'];
-          const name = m['Office Name'];
-          const reg = m['Region'];
-          if (id) {
-            officeIdToNameMap[id] = name;
-            officeIdToRegionMap[id] = reg;
+        // Scheme HOA set from table "Scheme_HOA" (column "Scheme HOA")
+        const schemeHoaSet = new Set();
+        schemeHoas.forEach(r => {
+          const code = String(r['Scheme HOA'] || r['Scheme_HOA'] || r['scheme hoa'] || r['scheme_hoa'] || r['HOA'] || r['HOA Code'] || Object.values(r)[0] || '').trim();
+          if (code && !isNaN(code)) {
+            schemeHoaSet.add(code);
           }
         });
 
-        const normName = (v) => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        // Fallback to default list from Scheme HOA.csv if table is currently empty
+        if (schemeHoaSet.size === 0) {
+          DEFAULT_SCHEME_HOAS.forEach(code => schemeHoaSet.add(code));
+        }
 
-        // Office Name -> Region (from office_mapping)
+        const normName = (v) => {
+          if (!v) return '';
+          return String(v).trim().toLowerCase().replace(/\s+/g, ' ').replace(/\.+$/, '');
+        };
+
+        // Build mapping maps from updated office_mapping
+        const officeIdToNameMap = {};
+        const officeIdToRegionMap = {};
         const officeNameToRegionMap = {};
         mapping.forEach(m => {
-          const n = normName(m['Office Name']);
-          const r = String(m['Region'] || '').trim();
-          if (n && r) officeNameToRegionMap[n] = r;
+          const id = String(m['Office ID'] || m['office_id'] || m['Office_ID'] || '').trim();
+          const rawName = String(m['Office Name'] || m['office_name'] || m['Office_Name'] || '').trim();
+          const rawReg = String(m['Region'] || m['region'] || '').trim();
+          const n = normName(rawName);
+
+          if (id) {
+            officeIdToNameMap[id] = rawName;
+            if (rawReg) officeIdToRegionMap[id] = rawReg;
+          }
+          if (n && rawReg) {
+            officeNameToRegionMap[n] = rawReg;
+          }
         });
 
-        // DDO Code -> { HO, Division, Region } (from Revenue DDO Mapping)
+        // DDO Code -> { ho, division, region, ddoCode } (from updated Revenue DDO Mapping)
         const ddoCodeMap = {};
         ddoMap.forEach(d => {
-          const code = String(d['DDO Code'] || '').trim().split('.')[0];
-          if (code) ddoCodeMap[code] = { ho: (d.HO || '').trim(), division: (d.Division || '').trim(), region: (d.Region || '').trim() };
+          const rawCode = String(d['DDO Code'] || d['ddo_code'] || d['DDO_Code'] || '').trim();
+          const ho = String(d['HO'] || d['ho'] || '').trim();
+          const division = String(d['Division'] || d['division'] || '').trim();
+          const region = String(d['Region'] || d['region'] || '').trim();
+          if (rawCode) {
+            const cleanCode = rawCode.split('.')[0];
+            const unpadded = cleanCode.replace(/^0+/, '') || '0';
+            const entry = { ho, division, region, ddoCode: cleanCode };
+            ddoCodeMap[cleanCode] = entry;
+            ddoCodeMap[unpadded] = entry;
+            ddoCodeMap[cleanCode.padStart(6, '0')] = entry;
+          }
         });
 
         // Build description-to-HOA map from Revenue_hoa (do not overwrite with generic e-Lekha codes!)
@@ -972,27 +1174,38 @@ export default function App() {
           'magazine post': '120100101330000'
         };
 
-        const pliRpliDetails = hoas.filter(item => 
+        const pliRpliDetails = hoas.filter(item =>
           ['PLI', 'PLI Direct Cost', 'RPLI', 'RPLI Direct Cost'].includes(item.Category)
         ).map(item => item['HOA Code']?.trim());
 
         const elekha = elekhaRaw.map(row => {
           const originalHoa = String(row.HOA || '').trim();
           let mappedHoa = originalHoa;
-          
+
           // Match any e-Lekha HOA starting with PLI/RPLI detailed codes
           const matchedDetailCode = pliRpliDetails.find(code => originalHoa.startsWith(code));
           if (matchedDetailCode) {
             mappedHoa = matchedDetailCode;
           }
-          
-          const cleanDdo = String(row['DDO Code'] || '').trim().split('.')[0];
-          const ddo = ddoCodeMap[cleanDdo];
 
-          // e-Lekha tab Region: from office_mapping (by HO name); fallbacks only if no match
+          const rawDdo = String(row['DDO Code'] || row['ddo_code'] || '').trim();
+          const cleanDdo = rawDdo.split('.')[0];
+          const unpaddedDdo = cleanDdo.replace(/^0+/, '') || '0';
+          const ddo = ddoCodeMap[cleanDdo] || ddoCodeMap[unpaddedDdo] || ddoCodeMap[cleanDdo.padStart(6, '0')];
+
+          // e-Lekha tab Region: correctly as per updated office_mapping SQL table
+          const hoNorm = normName(row.HO);
+          const divNorm = normName(row.Division);
+          const ddoHoNorm = ddo ? normName(ddo.ho) : '';
+          const ddoDivNorm = ddo ? normName(ddo.division) : '';
+
           const officeRegion =
-            officeNameToRegionMap[normName(row.HO)] ||
-            (ddo ? officeNameToRegionMap[normName(ddo.ho)] : '') ||
+            officeNameToRegionMap[hoNorm] ||
+            officeNameToRegionMap[divNorm] ||
+            (ddoHoNorm ? officeNameToRegionMap[ddoHoNorm] : '') ||
+            (ddoDivNorm ? officeNameToRegionMap[ddoDivNorm] : '') ||
+            (ddo ? ddo.region : '') ||
+            row.Region ||
             '';
 
           return {
@@ -1000,32 +1213,35 @@ export default function App() {
             HOA: originalHoa,
             MappedHOA: mappedHoa,
             SourceRegion: row.Region,
-            Region: officeRegion || (ddo ? ddo.region : '') || row.Region || '',
+            Region: officeRegion,
             // Vertical Revenue fields: strictly from "Revenue DDO Mapping"
-            VR_DDO: cleanDdo,
+            VR_DDO: ddo ? ddo.ddoCode : cleanDdo,
             VR_HO: ddo ? ddo.ho : (row.HO || ''),
             VR_Division: ddo ? ddo.division : (row.Division || ''),
-            VR_Region: ddo ? ddo.region : (row.SourceRegion || row.Region || '')
+            VR_Region: ddo ? ddo.region : (officeRegion || row.Region || '')
           };
         });
 
         // Process Budget data with standard naming & HOA resolution
         const budget = budgetRaw.map(row => {
-          const officeId = row['Office ID'];
-          const officeName = officeIdToNameMap[officeId] || row['Office Name'] || '';
-          
-          let region = officeIdToRegionMap[officeId] || row['Region'] || '';
-          if (!region && officeName.toLowerCase().includes('navsari')) {
-            region = 'SGR';
-          }
+          const officeId = String(row['Office ID'] || '').trim();
+          const rawOfficeName = String(row['Office Name'] || '').trim();
+          const officeName = officeIdToNameMap[officeId] || rawOfficeName || '';
 
-          let hoa = row['HOA'];
+          let region = officeIdToRegionMap[officeId] ||
+            officeNameToRegionMap[normName(officeName)] ||
+            officeNameToRegionMap[normName(rawOfficeName)] ||
+            row['Region'] || '';
+
+          let hoa = String(row['HOA'] || '').trim();
           if (hoa.includes('E') || hoa.includes('e')) {
             const descLower = row['HOA Description']?.toLowerCase();
             if (descToHoaMap[descLower]) {
               hoa = descToHoaMap[descLower];
             }
           }
+
+          const isScheme = schemeHoaSet.has(hoa) || Array.from(schemeHoaSet).some(s => hoa.startsWith(s) || s.startsWith(hoa));
 
           return {
             'Office ID': officeId,
@@ -1042,7 +1258,8 @@ export default function App() {
               parseNumber(row['Re-Appropritaion Transferred (F)']) +
               parseNumber(row['Reserved Budget (G)'])
             ),
-            'APT Consumed': row['Consumed Budget (H)'] || '0'
+            'APT Consumed': row['Consumed Budget (H)'] || '0',
+            'isScheme': isScheme
           };
         });
 
@@ -1052,18 +1269,19 @@ export default function App() {
         setElekhaData(elekha);
         setDdoMappingList(ddoMap);
         setReportMetadata(metadata);
+        setSchemeHoaList(schemeHoas);
 
         // Extract dropdown configuration details
         const sortedMonths = getSortedUniqueMonths(elekha);
         setUniqueMonths(sortedMonths);
-        
+
         // Aggregate all unique region names from Office_Mapping, budget, and e-Lekha
         const regionsSet = new Set();
         mapping.forEach(m => { if (m.Region) regionsSet.add(m.Region.trim()); });
         budget.forEach(b => { if (b.Region) regionsSet.add(b.Region.trim()); });
         elekha.forEach(e => { if (e.Region) regionsSet.add(e.Region.trim()); });
         ddoMap.forEach(d => { if (d.Region) regionsSet.add(d.Region.trim()); });
-        
+
         setUniqueRegions(Array.from(regionsSet).sort());
 
         // Default month for standard filters
@@ -1071,7 +1289,7 @@ export default function App() {
           const latestMonth = sortedMonths[sortedMonths.length - 1];
           setSelectedMonth('All'); // Show all data by default
           setElekhaColumnFilters({}); // No initial month filter (shows all data)
-          
+
           // Default Period settings for Vertical Revenue
           setP1From(sortedMonths[0]);
           setP1To(sortedMonths[0]);
@@ -1283,20 +1501,36 @@ export default function App() {
   // Budget filtered data (computed locally in React)
   // Mapped Budget Data containing calculated fields and virtual rows (pre-filter)
   const mappedBudgetData = useMemo(() => {
-    // 1. Map existing budget rows
+    const activeSchemeHoaSet = new Set();
+    schemeHoaList.forEach(r => {
+      const code = String(r['Scheme HOA'] || r['Scheme_HOA'] || r['scheme hoa'] || r['scheme_hoa'] || r['HOA'] || r['HOA Code'] || Object.values(r)[0] || '').trim();
+      if (code && !isNaN(code)) {
+        activeSchemeHoaSet.add(code);
+      }
+    });
+    if (activeSchemeHoaSet.size === 0) {
+      DEFAULT_SCHEME_HOAS.forEach(code => activeSchemeHoaSet.add(code));
+    }
+
+    // 1. Map existing budget rows and omit nil data (no allocation, no consumed, no e-lekha)
     const existingMappedRows = budgetData.map(row => {
       const unitName = String(row['Name of Unit (HO/Division)'] || '').trim();
       const hoa = String(row['HOA'] || '').trim();
       const key = `${unitName.toLowerCase()}_${hoa.toLowerCase()}`;
       const lookup = elekhaLookupMap[key];
       const eLekhaConsumedVal = lookup ? lookup.total : 0;
-      
+      const hasElekhaTxns = (lookup && lookup.txns && lookup.txns.length > 0) || false;
+
       const aptAllotedVal = parseNumber(row['APT Alloted']);
       const aptConsumedVal = parseNumber(row['APT Consumed']);
-      
+
       const diffVal = aptConsumedVal - eLekhaConsumedVal;
+      const balanceVal = balanceType === 'elekha' ? (aptAllotedVal - eLekhaConsumedVal) : (aptAllotedVal - aptConsumedVal);
       const aptPctVal = aptAllotedVal > 0 ? (aptConsumedVal / aptAllotedVal) * 100 : 0;
       const elekhaPctVal = aptAllotedVal > 0 ? (eLekhaConsumedVal / aptAllotedVal) * 100 : 0;
+
+      const isScheme = activeSchemeHoaSet.has(hoa) || Array.from(activeSchemeHoaSet).some(s => hoa.startsWith(s) || s.startsWith(hoa));
+      const hasAnyData = aptAllotedVal !== 0 || aptConsumedVal !== 0 || eLekhaConsumedVal !== 0 || hasElekhaTxns;
 
       return {
         ...row,
@@ -1304,10 +1538,13 @@ export default function App() {
         'APT Consumed': aptConsumedVal,
         'e-lekha Consumed': eLekhaConsumedVal,
         'Diff. (APT - e-Lekha)': diffVal,
+        'Balance': balanceVal,
         'APT Consumed %': aptPctVal,
-        'e-Lekha Consumed %': elekhaPctVal
+        'e-Lekha Consumed %': elekhaPctVal,
+        'isScheme': isScheme,
+        'hasAnyData': hasAnyData
       };
-    });
+    }).filter(row => row.hasAnyData);
 
     // 2. Build map of existing keys
     const existingBudgetKeys = new Set(
@@ -1345,10 +1582,12 @@ export default function App() {
           hoa,
           description: row.Description || '',
           payment: 0,
-          region: row.Region || ''
+          region: row.Region || '',
+          txnCount: 0
         };
       }
       virtualRowsMap[key].payment += (parseNumber(row['Payment (Rs.)']) + parseNumber(row['Receipt (Rs.)']));
+      virtualRowsMap[key].txnCount += 1;
     }
 
     const virtualRows = Object.values(virtualRowsMap)
@@ -1358,6 +1597,10 @@ export default function App() {
         if (!lookupInfo.officeId || lookupInfo.officeId.trim() === '') {
           return null;
         }
+        const vIsScheme = activeSchemeHoaSet.has(vRow.hoa) || Array.from(activeSchemeHoaSet).some(s => vRow.hoa.startsWith(s) || s.startsWith(vRow.hoa));
+        const vHasAnyData = vRow.payment !== 0 || (vRow.txnCount && vRow.txnCount > 0);
+        if (!vHasAnyData) return null;
+
         return {
           'Office ID': lookupInfo.officeId,
           'Name of Unit (HO/Division)': vRow.ho,
@@ -1368,15 +1611,27 @@ export default function App() {
           'APT Consumed': 0,
           'e-lekha Consumed': vRow.payment,
           'Diff. (APT - e-Lekha)': 0 - vRow.payment,
+          'Balance': balanceType === 'elekha' ? (0 - vRow.payment) : 0,
           'APT Consumed %': 0,
-          'e-Lekha Consumed %': 0
+          'e-Lekha Consumed %': 0,
+          'isScheme': vIsScheme,
+          'hasAnyData': true
         };
       })
       .filter(Boolean);
 
-    // 5. Combine existing mapped rows and virtual rows
-    return [...existingMappedRows, ...virtualRows];
-  }, [budgetData, elekhaLookupMap, elekhaData]);
+    // 5. Combine existing mapped rows and virtual rows, sorted from A TO Z by Name of Unit (HO/Division)
+    const combined = [...existingMappedRows, ...virtualRows];
+    return combined.sort((a, b) => {
+      const unitA = String(a['Name of Unit (HO/Division)'] || '').trim().toLowerCase();
+      const unitB = String(b['Name of Unit (HO/Division)'] || '').trim().toLowerCase();
+      const cmp = unitA.localeCompare(unitB, undefined, { sensitivity: 'base', numeric: true });
+      if (cmp !== 0) return cmp;
+      const hoaA = String(a['HOA'] || '').trim();
+      const hoaB = String(b['HOA'] || '').trim();
+      return hoaA.localeCompare(hoaB, undefined, { numeric: true });
+    });
+  }, [budgetData, elekhaLookupMap, elekhaData, schemeHoaList, balanceType]);
 
   // Region dropdown for Budget = unique values of the table's "Region" column
   const budgetRegionOptions = useMemo(() => {
@@ -1391,6 +1646,49 @@ export default function App() {
     });
     return Array.from(set).sort();
   }, [mappedBudgetData, currentUser, isOfficeAllowed]);
+
+  // Helper to resolve Object Head for any budget row
+  const getObjectHeadForRow = useCallback((row) => {
+    if (!row) return null;
+    const hoaStr = String(row.HOA || '').trim();
+    const last2 = hoaStr.length >= 2 ? hoaStr.slice(-2) : '';
+    const descStr = String(row.Description || '').trim();
+    const descLower = descStr.toLowerCase();
+
+    // 1. Direct match by last 2 digits from OBJECT_HEADS
+    if (last2 && last2 !== '00') {
+      const matched = OBJECT_HEADS.find(h => h.code === last2);
+      if (matched) return matched;
+    }
+
+    // 2. Match by title or common aliases
+    const matchedByTitle = OBJECT_HEADS.find(h => {
+      const titleLower = h.title.toLowerCase();
+      if (descLower.includes(titleLower)) return true;
+      if (h.code === '08' && descLower.includes('ltc')) return true;
+      if (h.code === '27' && descLower.includes('minor civil')) return true;
+      if (h.code === '71' && (descLower.includes('ict') || descLower.includes('computerisation') || descLower.includes('modernisation of admin'))) return true;
+      if (h.code === '01' && (descLower.includes('salaires') || descLower.includes('salary'))) return true;
+      if ((h.code === '25' || h.code === '26') && (descLower.includes('advertising') || descLower.includes('advertisement'))) return true;
+      return false;
+    });
+    if (matchedByTitle) return matchedByTitle;
+
+    // 3. Fallback: if last2 is 2 digits and description has a sub-title after hyphen or underscore
+    if (last2 && /^\d{2}$/.test(last2) && last2 !== '00') {
+      let extractedTitle = '';
+      if (descStr.includes('-')) {
+        extractedTitle = descStr.split('-').pop().trim();
+      } else if (descStr.includes('_')) {
+        extractedTitle = descStr.split('_').pop().trim();
+      }
+      if (extractedTitle) {
+        return { code: last2, title: extractedTitle };
+      }
+    }
+
+    return null;
+  }, []);
 
   // Helper for cascading filters on Budget
   const getFilteredDataForColumn = (excludeColumnName) => {
@@ -1442,7 +1740,7 @@ export default function App() {
         const aptAllotedVal = row['APT Alloted'];
         const aptConsumedVal = row['APT Consumed'];
         const elekhaConsumedVal = row['e-lekha Consumed'] || 0;
-        
+
         if (selectedAnalysisType === 'over') {
           if (!(aptAllotedVal > 0 && aptConsumedVal > aptAllotedVal)) return false;
         } else if (selectedAnalysisType === 'under') {
@@ -1468,14 +1766,152 @@ export default function App() {
         }
       }
 
+      // 7. Scheme / Non-Scheme Fund filter
+      if (fundFilter === 'scheme' && !row.isScheme) {
+        return false;
+      }
+      if (fundFilter === 'non-scheme' && row.isScheme) {
+        return false;
+      }
+
+      // 8. Object Head filter
+      if (excludeColumnName !== 'Object Head' && budgetObjectHead !== 'All') {
+        const head = getObjectHeadForRow(row);
+        const hoaStr = String(row.HOA || '').trim();
+        const matchesCode = hoaStr.endsWith(budgetObjectHead);
+        const matchesHead = head && head.code === budgetObjectHead;
+        if (!matchesCode && !matchesHead) {
+          return false;
+        }
+      }
+
       return true;
     });
   };
 
+  // Dynamic Object Heads present in the active table data (before Object Head filter is applied)
+  const availableObjectHeads = useMemo(() => {
+    const headsMap = new Map();
+    const rows = getFilteredDataForColumn('Object Head');
+
+    rows.forEach(row => {
+      const head = getObjectHeadForRow(row);
+      if (head && head.code && !headsMap.has(head.code)) {
+        headsMap.set(head.code, head);
+      }
+    });
+
+    // Fallback to mappedBudgetData if rows is empty
+    if (headsMap.size === 0) {
+      mappedBudgetData.forEach(row => {
+        const head = getObjectHeadForRow(row);
+        if (head && head.code && !headsMap.has(head.code)) {
+          headsMap.set(head.code, head);
+        }
+      });
+    }
+
+    return Array.from(headsMap.values()).sort((a, b) => {
+      const numA = parseInt(a.code, 10);
+      const numB = parseInt(b.code, 10);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.code.localeCompare(b.code);
+    });
+  }, [mappedBudgetData, budgetSearch, budgetRegion, budgetFilterStatus, budgetColumnFilters, pctSearchVal, pctSearchType, isAnalysisMode, selectedAnalysisType, fundFilter, currentUser, isOfficeAllowed, getObjectHeadForRow]);
+
+  // If active budgetObjectHead is not in the new available list, reset to 'All'
+  useEffect(() => {
+    if (budgetObjectHead !== 'All' && availableObjectHeads.length > 0) {
+      const exists = availableObjectHeads.some(h => h.code === budgetObjectHead);
+      if (!exists) {
+        setBudgetObjectHead('All');
+      }
+    }
+  }, [availableObjectHeads, budgetObjectHead]);
+
   // Budget filtered data (computed locally in React)
   const filteredBudgetData = useMemo(() => {
     return getFilteredDataForColumn('');
-  }, [mappedBudgetData, budgetSearch, budgetRegion, budgetFilterStatus, budgetColumnFilters, pctSearchVal, pctSearchType, isAnalysisMode, selectedAnalysisType]);
+  }, [mappedBudgetData, budgetSearch, budgetRegion, budgetFilterStatus, budgetColumnFilters, pctSearchVal, pctSearchType, isAnalysisMode, selectedAnalysisType, fundFilter, budgetObjectHead]);
+
+  // Base filtered budget data before Scheme Only filter is applied
+  const baseFilteredBudgetData = useMemo(() => {
+    return mappedBudgetData.filter(row => {
+      if (currentUser && currentUser.offices && currentUser.offices.length > 0) {
+        if (!isOfficeAllowed(row['Office ID'], row['Name of Unit (HO/Division)'])) return false;
+      }
+      if (budgetRegion !== 'All' && row.Region !== budgetRegion) return false;
+      if (budgetSearch.trim() !== '') {
+        const search = budgetSearch.toLowerCase();
+        const unitMatch = String(row['Name of Unit (HO/Division)'] || '').toLowerCase().includes(search);
+        const idMatch = String(row['Office ID'] || '').toLowerCase().includes(search);
+        const hoaMatch = String(row.HOA || '').toLowerCase().includes(search);
+        const descMatch = String(row.Description || '').toLowerCase().includes(search);
+        const regionMatch = String(row.Region || '').toLowerCase().includes(search);
+        if (!unitMatch && !idMatch && !hoaMatch && !descMatch && !regionMatch) return false;
+      }
+      if (budgetFilterStatus !== 'All') {
+        const pct = row['APT Consumed %'];
+        if (budgetFilterStatus === 'Over' && pct <= 100) return false;
+        if (budgetFilterStatus === 'Warning' && (pct < 85 || pct > 100)) return false;
+        if (budgetFilterStatus === 'Safe' && pct >= 85) return false;
+      }
+      if (budgetObjectHead !== 'All') {
+        const head = getObjectHeadForRow(row);
+        const hoaStr = String(row.HOA || '').trim();
+        const matchesCode = hoaStr.endsWith(budgetObjectHead);
+        const matchesHead = head && head.code === budgetObjectHead;
+        if (!matchesCode && !matchesHead) return false;
+      }
+      return true;
+    });
+  }, [mappedBudgetData, currentUser, isOfficeAllowed, budgetRegion, budgetSearch, budgetFilterStatus, budgetObjectHead, getObjectHeadForRow]);
+
+  // Scheme Fund and Non-Scheme Fund KPI summary (single line)
+  const schemeFundKpis = useMemo(() => {
+    let schemeAllotted = 0;
+    let schemeConsumedAPT = 0;
+    let schemeConsumedElekha = 0;
+
+    let nonSchemeAllotted = 0;
+    let nonSchemeConsumedAPT = 0;
+    let nonSchemeConsumedElekha = 0;
+
+    baseFilteredBudgetData.forEach(row => {
+      const alloted = parseNumber(row['APT Alloted']);
+      const consumedAPT = parseNumber(row['APT Consumed']);
+      const consumedElekha = row['e-lekha Consumed'] || 0;
+
+      if (row.isScheme) {
+        schemeAllotted += alloted;
+        schemeConsumedAPT += consumedAPT;
+        schemeConsumedElekha += consumedElekha;
+      } else {
+        nonSchemeAllotted += alloted;
+        nonSchemeConsumedAPT += consumedAPT;
+        nonSchemeConsumedElekha += consumedElekha;
+      }
+    });
+
+    const schemeConsumed = schemeConsumedSource === 'elekha' ? schemeConsumedElekha : schemeConsumedAPT;
+    const schemePct = schemeAllotted > 0 ? (schemeConsumed / schemeAllotted) * 100 : 0;
+
+    const nonSchemeConsumed = schemeConsumedSource === 'elekha' ? nonSchemeConsumedElekha : nonSchemeConsumedAPT;
+    const nonSchemePct = nonSchemeAllotted > 0 ? (nonSchemeConsumed / nonSchemeAllotted) * 100 : 0;
+
+    return {
+      schemeAllotted,
+      schemeConsumedAPT,
+      schemeConsumedElekha,
+      schemeConsumed,
+      schemePct,
+      nonSchemeAllotted,
+      nonSchemeConsumedAPT,
+      nonSchemeConsumedElekha,
+      nonSchemeConsumed,
+      nonSchemePct
+    };
+  }, [baseFilteredBudgetData, schemeConsumedSource]);
 
   // Budget Paginated Data
   const paginatedBudgetData = useMemo(() => {
@@ -1508,16 +1944,18 @@ export default function App() {
 
     const aptUtil = allotted > 0 ? (consumedAPT / allotted) * 100 : 0;
     const elekhaUtil = allotted > 0 ? (consumedElekha / allotted) * 100 : 0;
+    const balance = allotted - (balanceType === 'elekha' ? consumedElekha : consumedAPT);
 
     return {
       allotted,
       consumedAPT,
       consumedElekha,
       diff,
+      balance,
       aptUtil,
       elekhaUtil
     };
-  }, [filteredBudgetData]);
+  }, [filteredBudgetData, balanceType]);
 
   // e-Lekha tab KPI metrics summary (the 6 stats)
   const elekhaKpis = useMemo(() => {
@@ -1554,7 +1992,7 @@ export default function App() {
     const hos = new Set();
     const divisions = new Set();
     const regions = new Set();
-    
+
     elekhaData.forEach(row => {
       if (row.HOA) hoas.add(String(row.HOA).trim());
       if (row.HO) hos.add(String(row.HO).trim());
@@ -1678,49 +2116,49 @@ export default function App() {
   // Compute the Matrix Data structure for the Vertical Revenue Report Comparison
   const verticalRevenueReportData = useMemo(() => {
     if (!generatedConfig || elekhaData.length === 0 || hoaList.length === 0) return null;
-    
-    const { 
-      type: gType, 
-      p1From: gP1From, 
-      p1To: gP1To, 
-      p2From: gP2From, 
-      p2To: gP2To, 
+
+    const {
+      type: gType,
+      p1From: gP1From,
+      p1To: gP1To,
+      p2From: gP2From,
+      p2To: gP2To,
       p1FromDate: gP1FromDate,
       p1ToDate: gP1ToDate,
       p2FromDate: gP2FromDate,
       p2ToDate: gP2ToDate,
-      reportType: gReportType, 
-      groupBy: gGroupBy 
+      reportType: gReportType,
+      groupBy: gGroupBy
     } = generatedConfig;
 
     const isInPeriod = (row, periodNum) => {
       if (gType === 'Month') {
         const rowMonth = row.Month;
         if (!rowMonth) return false;
-        
+
         const start = periodNum === 1 ? gP1From : gP2From;
         const end = periodNum === 1 ? gP1To : gP2To;
-        
+
         const startIdx = uniqueMonths.indexOf(start);
         const endIdx = uniqueMonths.indexOf(end);
         const rowIdx = uniqueMonths.indexOf(rowMonth);
-        
+
         if (startIdx === -1 || endIdx === -1 || rowIdx === -1) return false;
         const min = Math.min(startIdx, endIdx);
         const max = Math.max(startIdx, endIdx);
-        
+
         return rowIdx >= min && rowIdx <= max;
       } else {
         const txnDateStr = row['Txn Date'];
         if (!txnDateStr) return false;
-        
+
         const parts = txnDateStr.split('-');
         if (parts.length !== 3) return false;
         const txnDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        
+
         const start = periodNum === 1 ? gP1FromDate : gP2FromDate;
         const end = periodNum === 1 ? gP1ToDate : gP2ToDate;
-        
+
         return txnDate >= start && txnDate <= end;
       }
     };
@@ -1728,16 +2166,16 @@ export default function App() {
     // Extract unique units for columns and map them to DDO codes using revenue_ddo_mapping
     const unitsSet = new Set();
     const divisionToDdosMap = {};
-    
+
     // Build values index map: "HOA_UnitName_Period" -> sum
     const valMap = {}; // key: "HOA_UnitName_Period" -> sum
-    
+
     const len = elekhaData.length;
     for (let i = 0; i < len; i++) {
       const row = elekhaData[i];
       const hoa = String(row.MappedHOA || row.HOA || '').trim();
       const cleanDdoCode = row.VR_DDO || String(row['DDO Code'] || '').trim().split('.')[0];
-      
+
       if (!hoa) continue;
 
       // DDO Code / HO / Division / Region strictly from "Revenue DDO Mapping"
@@ -1886,9 +2324,9 @@ export default function App() {
     });
 
     // Pre-calculate Row & Column Gross Totals
-    const rowP1Gross = {}; 
+    const rowP1Gross = {};
     const rowP2Gross = {};
-    const catP1Gross = {}; 
+    const catP1Gross = {};
     const catP2Gross = {};
     let grandP1Gross = 0;
     let grandP2Gross = 0;
@@ -1907,7 +2345,7 @@ export default function App() {
         });
         rowP1Gross[hoaCode] = r1;
         rowP2Gross[hoaCode] = r2;
-        
+
         catP1Gross[cat] += r1;
         catP2Gross[cat] += r2;
       });
@@ -1915,7 +2353,7 @@ export default function App() {
       grandP2Gross += catP2Gross[cat];
     });
 
-    const unitP1Gross = {}; 
+    const unitP1Gross = {};
     const unitP2Gross = {};
     filteredUnits.forEach(g => {
       let u1 = 0;
@@ -1953,7 +2391,7 @@ export default function App() {
     if (!verticalRevenueReportData) return null;
     const { uniqueUnits } = verticalRevenueReportData;
     const result = {};
-    
+
     const catsToCalc = ['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'PLI', 'PLI Direct Cost', 'RPLI', 'RPLI Direct Cost'];
     catsToCalc.forEach(cat => {
       let p1Sum = 0;
@@ -1980,7 +2418,7 @@ export default function App() {
         p2: (result['RPLI']?.p2 || 0) + (result['RPLI Direct Cost']?.p2 || 0)
       }
     };
-    
+
     let grossP1 = 0;
     let grossP2 = 0;
     catsToCalc.forEach(cat => {
@@ -1988,7 +2426,7 @@ export default function App() {
       grossP2 += result[cat]?.p2 || 0;
     });
     kpiResult['Gross'] = { p1: grossP1, p2: grossP2 };
-    
+
     return kpiResult;
   }, [verticalRevenueReportData]);
 
@@ -2350,10 +2788,10 @@ export default function App() {
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
-        
+
         // Parse rows to JSON
         const json = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-        
+
         if (json.length === 0) {
           throw new Error('The selected file is empty.');
         }
@@ -2361,7 +2799,7 @@ export default function App() {
         // Get headers of first sheet
         const headersJson = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         const headers = headersJson[0] ? headersJson[0].map(h => String(h).trim()) : [];
-        
+
         if (headers.length === 0) {
           throw new Error('No column headers detected in the file.');
         }
@@ -2372,17 +2810,17 @@ export default function App() {
         // Pre-build default mappings
         const targetCols = syncTable === 'Budget' ? BUDGET_COLUMNS : ELEKHA_COLUMNS;
         const initialMapping = {};
-        
+
         targetCols.forEach(targetCol => {
           const normalizedTarget = targetCol.toLowerCase().replace(/[^a-z0-9]/g, '');
-          
+
           const match = headers.find(h => {
             const normalizedHeader = h.toLowerCase().replace(/[^a-z0-9]/g, '');
-            return normalizedHeader === normalizedTarget || 
-                   normalizedHeader.includes(normalizedTarget) || 
-                   normalizedTarget.includes(normalizedHeader);
+            return normalizedHeader === normalizedTarget ||
+              normalizedHeader.includes(normalizedTarget) ||
+              normalizedTarget.includes(normalizedHeader);
           });
-          
+
           initialMapping[targetCol] = match || '';
         });
 
@@ -2416,7 +2854,7 @@ export default function App() {
 
     const activeMapping = { ...columnMapping };
     const targetCols = syncTable === 'Budget' ? BUDGET_COLUMNS : ELEKHA_COLUMNS;
-    
+
     const mappedCount = Object.values(activeMapping).filter(v => !!v).length;
     if (mappedCount === 0) {
       setSyncError('No columns are mapped. Please map at least one column to import data.');
@@ -2452,12 +2890,12 @@ export default function App() {
       setSyncProgress('Formatting records for database insertion...');
       const formattedRows = parsedRows.map(row => {
         const dbRecord = {};
-        
+
         targetCols.forEach(col => {
           const fileColName = activeMapping[col];
           if (fileColName) {
             let val = row[fileColName];
-            
+
             if (syncTable === 'Budget') {
               if (col === 'Year') {
                 dbRecord[col] = val ? parseInt(String(val).replace(/\D/g, ''), 10) : null;
@@ -2517,18 +2955,18 @@ export default function App() {
             }
           }
         });
-        
+
         return dbRecord;
       });
 
       // 3. Batch upload the formatted records in chunks of 500
       const CHUNK_SIZE = 500;
       const totalChunks = Math.ceil(formattedRows.length / CHUNK_SIZE);
-      
+
       for (let i = 0; i < totalChunks; i++) {
         const chunk = formattedRows.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
         setSyncProgress(`Uploading batch ${i + 1} of ${totalChunks} (${chunk.length} rows)...`);
-        
+
         const { error: insertError } = await supabase
           .from(dbTable)
           .insert(chunk);
@@ -2550,7 +2988,7 @@ export default function App() {
 
       setSyncProgress('Upload complete! Finalizing synchronization...');
       setSyncSuccess(true);
-      
+
       // Clear sync states
       setSyncFile(null);
       setSyncHeaders([]);
@@ -2582,12 +3020,69 @@ export default function App() {
     });
   };
 
+  // Close export dropdown on outside click
+  useEffect(() => {
+    if (!exportMenuOpen && !elekhaExportMenuOpen && !revenueExportMenuOpen) return;
+    const close = () => {
+      setExportMenuOpen(false);
+      setElekhaExportMenuOpen(false);
+      setRevenueExportMenuOpen(false);
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [exportMenuOpen, elekhaExportMenuOpen, revenueExportMenuOpen]);
+
+  // PDF Export for Budget Report (opens print dialog -> "Save as PDF")
+  const handleExportBudgetPDF = () => {
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const num = (v) => (typeof v === 'number' ? v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : esc(v || '–'));
+    const pct = (v) => (typeof v === 'number' ? v.toFixed(2) + '%' : esc(v || '0.00%'));
+    const rowsHtml = filteredBudgetData.map(r => `
+      <tr>
+        <td>${esc(r['Office ID'])}</td>
+        <td>${esc(r['Name of Unit (HO/Division)'])}</td>
+        <td>${esc(r['Region'])}</td>
+        <td>${esc(r['HOA'])}</td>
+        <td>${esc(r['Description'])}</td>
+        <td class="n">${num(r['APT Alloted'])}</td>
+        <td class="n">${num(r['APT Consumed'])}</td>
+        <td class="n">${num(r['e-lekha Consumed'])}</td>
+        <td class="n">${num(r['Diff. (APT - e-Lekha)'])}</td>
+        <td class="n">${num(r['Balance'])}</td>
+        <td class="n">${pct(r['APT Consumed %'])}</td>
+        <td class="n">${pct(r['e-Lekha Consumed %'])}</td>
+      </tr>`).join('');
+    const w = window.open('', '_blank');
+    if (!w) { alert('Please allow pop-ups to export the PDF.'); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Office Budget Utilization Summary</title>
+      <style>
+        @page { size: A4 landscape; margin: 10mm; }
+        body { font-family: Arial, sans-serif; color: #1e1b4b; }
+        h1 { font-size: 16px; margin: 0 0 4px; color: #6d28d9; }
+        p { font-size: 10px; margin: 0 0 10px; color: #475569; }
+        table { width: 100%; border-collapse: collapse; font-size: 8.5px; }
+        th { background: #6d28d9; color: #fff; padding: 5px 4px; text-align: left; }
+        td { padding: 4px; border-bottom: 1px solid #e2e8f0; }
+        td.n { text-align: right; white-space: nowrap; }
+        tr:nth-child(even) td { background: #f5f3ff; }
+      </style></head><body>
+      <h1>Office Budget Utilization Summary</h1>
+      <p>${filteredBudgetData.length} records • Generated ${new Date().toLocaleString('en-IN')}</p>
+      <table><thead><tr>
+        <th>Office ID</th><th>Name of Unit</th><th>Region</th><th>HOA</th><th>Description</th>
+        <th>APT Alloted</th><th>APT Consumed</th><th>e-Lekha Consumed</th><th>Diff.</th><th>Balance</th><th>APT %</th><th>e-Lekha %</th>
+      </tr></thead><tbody>${rowsHtml}</tbody></table>
+      <script>window.onload = function () { setTimeout(function () { window.print(); }, 300); };<\/script>
+      </body></html>`);
+    w.document.close();
+  };
+
   // CSV Export for Budget Report
   const handleExportBudgetCSV = () => {
     const csvRows = [];
     const header = [
       'Office ID', 'Name of Unit (HO/Division)', 'Region', 'HOA', 'Description',
-      'APT Alloted', 'APT Consumed', 'e-lekha Consumed', 'Diff. (APT - e-Lekha)',
+      'APT Alloted', 'APT Consumed', 'e-lekha Consumed', 'Diff. (APT - e-Lekha)', 'Balance',
       'APT Consumed %', 'e-Lekha Consumed %'
     ];
     csvRows.push(header.map(h => `"${h.replace(/"/g, '""')}"`).join(','));
@@ -2595,7 +3090,7 @@ export default function App() {
     filteredBudgetData.forEach(row => {
       const line = [
         row['Office ID'], row['Name of Unit (HO/Division)'], row['Region'], row['HOA'], row['Description'],
-        row['APT Alloted'], row['APT Consumed'], row['e-lekha Consumed'], row['Diff. (APT - e-Lekha)'],
+        row['APT Alloted'], row['APT Consumed'], row['e-lekha Consumed'], row['Diff. (APT - e-Lekha)'], row['Balance'],
         row['APT Consumed %'], row['e-Lekha Consumed %']
       ];
       csvRows.push(line.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(','));
@@ -2623,6 +3118,7 @@ export default function App() {
       'APT Consumed': row['APT Consumed'] ?? 0,
       'e-Lekha Consumed': row['e-lekha Consumed'] ?? 0,
       'Diff. (APT - e-Lekha)': row['Diff. (APT - e-Lekha)'] ?? 0,
+      'Balance': row['Balance'] ?? 0,
       'APT Consumed %': typeof row['APT Consumed %'] === 'number' ? (row['APT Consumed %'].toFixed(2) + '%') : (row['APT Consumed %'] || '0.00%'),
       'e-Lekha Consumed %': typeof row['e-Lekha Consumed %'] === 'number' ? (row['e-Lekha Consumed %'].toFixed(2) + '%') : (row['e-Lekha Consumed %'] || '0.00%')
     }));
@@ -2633,6 +3129,115 @@ export default function App() {
     XLSX.writeFile(workbook, 'Budget_Report_Export.xlsx');
   };
 
+  // PDF Export for e-Lekha Transactions Table
+  const handleExportElekhaPDF = () => {
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const rowsHtml = filteredElekhaData.map(r => `
+      <tr>
+        <td>${esc(r['TE Number'])}</td>
+        <td>${esc(r['Txn Date'])}</td>
+        <td>${esc(r['Month'])}</td>
+        <td>${esc(r['Region'])}</td>
+        <td>${esc(r['DDO Code'])}</td>
+        <td>${esc(r['HO'])}</td>
+        <td>${esc(r['Division'])}</td>
+        <td>${esc(r['HOA'])}</td>
+        <td>${esc(r['Description'])}</td>
+        <td style="text-align:right;">${esc(r['Receipt (Rs.)'])}</td>
+        <td style="text-align:right;">${esc(r['Payment (Rs.)'])}</td>
+        <td>${esc(r['Remark'])}</td>
+      </tr>`).join('');
+    const w = window.open('', '_blank');
+    if (!w) { alert('Please allow pop-ups to export the PDF.'); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>e-Lekha Transactions Report</title>
+      <style>
+        @page { size: A4 landscape; margin: 10mm; }
+        body { font-family: Arial, sans-serif; color: #1e1b4b; }
+        h1 { font-size: 16px; margin: 0 0 4px; color: #6d28d9; }
+        p { font-size: 10px; margin: 0 0 10px; color: #475569; }
+        table { width: 100%; border-collapse: collapse; font-size: 8px; }
+        th { background: #6d28d9; color: #fff; padding: 4px; text-align: left; }
+        td { padding: 4px; border-bottom: 1px solid #e2e8f0; }
+        tr:nth-child(even) td { background: #f5f3ff; }
+      </style></head><body>
+      <h1>e-Lekha Transactions Report</h1>
+      <p>${filteredElekhaData.length} records • Generated ${new Date().toLocaleString('en-IN')}</p>
+      <table><thead><tr>
+        <th>TE Number</th><th>Txn Date</th><th>Month</th><th>Region</th><th>DDO Code</th><th>HO</th><th>Division</th><th>HOA</th><th>Description</th><th>Receipts</th><th>Payments</th><th>Remark</th>
+      </tr></thead><tbody>${rowsHtml}</tbody></table>
+      <script>window.onload = function () { setTimeout(function () { window.print(); }, 300); };<\/script>
+      </body></html>`);
+    w.document.close();
+  };
+
+  // PDF Export for Vertical Revenue Report
+  const handleExportRevenuePDF = () => {
+    if (!verticalRevenueReportData) return;
+    const { uniqueUnits, categoriesOrder, groupedHoas, p1Totals, p2Totals, p1CatTotals, p2CatTotals, rowP1Gross, rowP2Gross, catP1Gross, catP2Gross, grandP1Gross, grandP2Gross, unitP1Gross, unitP2Gross } = verticalRevenueReportData;
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const num = (v) => (typeof v === 'number' ? v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : esc(v || '–'));
+
+    let rowsHtml = '';
+    categoriesOrder.forEach(cat => {
+      const hoas = groupedHoas[cat] || [];
+      if (generatedConfig.reportType === 'Detail') {
+        hoas.forEach(hoa => {
+          const hoaCode = String(hoa['HOA Code'] || '').trim();
+          rowsHtml += `<tr><td>${esc(cat)}</td><td>${esc(hoaCode)}</td><td>${esc(hoa['Description'] || '')}</td>`;
+          uniqueUnits.forEach(g => {
+            const v1 = p1Totals[`${hoaCode}_${g.name}`] || 0;
+            const v2 = p2Totals[`${hoaCode}_${g.name}`] || 0;
+            rowsHtml += `<td style="text-align:right;">${num(v1)}</td><td style="text-align:right;">${num(v2)}</td>`;
+          });
+          rowsHtml += `<td style="text-align:right;font-weight:bold;">${num(rowP1Gross[hoaCode] || 0)}</td><td style="text-align:right;font-weight:bold;">${num(rowP2Gross[hoaCode] || 0)}</td></tr>`;
+        });
+      }
+      rowsHtml += `<tr style="background:#ede9fe;font-weight:bold;"><td>${esc(cat)} Total</td><td></td><td></td>`;
+      uniqueUnits.forEach(g => {
+        const c1 = p1CatTotals[`${cat}_${g.name}`] || 0;
+        const c2 = p2CatTotals[`${cat}_${g.name}`] || 0;
+        rowsHtml += `<td style="text-align:right;">${num(c1)}</td><td style="text-align:right;">${num(c2)}</td>`;
+      });
+      rowsHtml += `<td style="text-align:right;">${num(catP1Gross[cat] || 0)}</td><td style="text-align:right;">${num(catP2Gross[cat] || 0)}</td></tr>`;
+    });
+
+    rowsHtml += `<tr style="background:#ddd6fe;font-weight:800;"><td>GROSS TOTAL</td><td></td><td></td>`;
+    uniqueUnits.forEach(g => {
+      rowsHtml += `<td style="text-align:right;">${num(unitP1Gross[g.name] || 0)}</td><td style="text-align:right;">${num(unitP2Gross[g.name] || 0)}</td>`;
+    });
+    rowsHtml += `<td style="text-align:right;">${num(grandP1Gross)}</td><td style="text-align:right;">${num(grandP2Gross)}</td></tr>`;
+
+    let unitColsHeader = '';
+    uniqueUnits.forEach(g => {
+      unitColsHeader += `<th colspan="2" style="text-align:center;">${esc(g.label)}</th>`;
+    });
+    let subColsHeader = '';
+    uniqueUnits.forEach(() => {
+      subColsHeader += `<th style="text-align:right;">${getPeriodLabel(1)}</th><th style="text-align:right;">${getPeriodLabel(2)}</th>`;
+    });
+
+    const w = window.open('', '_blank');
+    if (!w) { alert('Please allow pop-ups to export the PDF.'); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Vertical Revenue Matrix Report</title>
+      <style>
+        @page { size: A4 landscape; margin: 10mm; }
+        body { font-family: Arial, sans-serif; color: #1e1b4b; }
+        h1 { font-size: 16px; margin: 0 0 4px; color: #6d28d9; }
+        p { font-size: 10px; margin: 0 0 10px; color: #475569; }
+        table { width: 100%; border-collapse: collapse; font-size: 8px; }
+        th { background: #6d28d9; color: #fff; padding: 4px; text-align: left; }
+        td { padding: 4px; border-bottom: 1px solid #e2e8f0; }
+      </style></head><body>
+      <h1>Vertical Revenue Matrix Report</h1>
+      <p>Period: ${getPeriodLabel(1)} vs ${getPeriodLabel(2)} • Generated ${new Date().toLocaleString('en-IN')}</p>
+      <table><thead>
+        <tr><th rowspan="2">Category</th><th rowspan="2">HOA</th><th rowspan="2">Description</th>${unitColsHeader}<th colspan="2" style="text-align:center;">Gross Total</th></tr>
+        <tr>${subColsHeader}<th style="text-align:right;">${getPeriodLabel(1)}</th><th style="text-align:right;">${getPeriodLabel(2)}</th></tr>
+      </thead><tbody>${rowsHtml}</tbody></table>
+      <script>window.onload = function () { setTimeout(function () { window.print(); }, 300); };<\/script>
+      </body></html>`);
+    w.document.close();
+  };
   // CSV Export for e-Lekha Transactions Table
   const handleExportElekhaCSV = () => {
     const csvRows = [];
@@ -2686,9 +3291,9 @@ export default function App() {
   const handleExportCSV = () => {
     if (!verticalRevenueReportData) return;
     const { uniqueUnits, categoriesOrder, groupedHoas, p1Totals, p2Totals, p1CatTotals, p2CatTotals, rowP1Gross, rowP2Gross, catP1Gross, catP2Gross, grandP1Gross, grandP2Gross, unitP1Gross, unitP2Gross } = verticalRevenueReportData;
-    
+
     const csvRows = [];
-    
+
     // Flat Header
     const header = ['Category', 'HOA', 'Description'];
     uniqueUnits.forEach(g => {
@@ -2702,7 +3307,7 @@ export default function App() {
     // Rows
     categoriesOrder.forEach(cat => {
       const hoas = groupedHoas[cat] || [];
-      
+
       // If Detail, show individual HOAs
       if (generatedConfig.reportType === 'Detail') {
         hoas.forEach(hoa => {
@@ -2747,8 +3352,8 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    
-    const rangeText = generatedConfig.type === 'Month' 
+
+    const rangeText = generatedConfig.type === 'Month'
       ? `P1_${generatedConfig.p1From}_to_${generatedConfig.p1To}_P2_${generatedConfig.p2From}_to_${generatedConfig.p2To}`
       : `P1_${generatedConfig.p1FromDate}_to_${generatedConfig.p1ToDate}_P2_${generatedConfig.p2FromDate}_to_${generatedConfig.p2ToDate}`;
 
@@ -2835,7 +3440,7 @@ export default function App() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Vertical Revenue Report');
 
-    const rangeText = generatedConfig.type === 'Month' 
+    const rangeText = generatedConfig.type === 'Month'
       ? `P1_${generatedConfig.p1From}_to_${generatedConfig.p1To}_P2_${generatedConfig.p2From}_to_${generatedConfig.p2To}`
       : `P1_${generatedConfig.p1FromDate}_to_${generatedConfig.p1ToDate}_P2_${generatedConfig.p2FromDate}_to_${generatedConfig.p2ToDate}`;
 
@@ -2926,9 +3531,9 @@ export default function App() {
               <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>User ID</label>
               <div style={{ position: 'relative' }}>
                 <User size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input 
-                  type="text" 
-                  placeholder="Enter 8-digit User ID" 
+                <input
+                  type="text"
+                  placeholder="Enter 8-digit User ID"
                   value={loginUserId}
                   onChange={(e) => setLoginUserId(e.target.value.replace(/\D/g, '').substring(0, 8))}
                   className="custom-input"
@@ -2941,16 +3546,16 @@ export default function App() {
               <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Password</label>
               <div style={{ position: 'relative' }}>
                 <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input 
-                  type={showPassword ? 'text' : 'password'} 
-                  placeholder="Enter Password" 
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter Password"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   className="custom-input"
                   style={{ paddingLeft: '38px', paddingRight: '40px', width: '100%', height: '42px', boxSizing: 'border-box' }}
                 />
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   style={{
                     position: 'absolute',
@@ -2987,9 +3592,9 @@ export default function App() {
               </div>
             )}
 
-            <button 
-              type="submit" 
-              className="pg-btn" 
+            <button
+              type="submit"
+              className="pg-btn"
               style={{
                 width: '100%',
                 height: '42px',
@@ -2997,7 +3602,11 @@ export default function App() {
                 color: '#14210f',
                 fontWeight: 'bold',
                 border: 'none',
-                marginTop: '10px'
+                marginTop: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center'
               }}
             >
               Sign In
@@ -3067,9 +3676,9 @@ export default function App() {
               <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>New Password</label>
               <div style={{ position: 'relative' }}>
                 <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input 
-                  type="password" 
-                  placeholder="Enter New Password" 
+                <input
+                  type="password"
+                  placeholder="Enter New Password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="custom-input"
@@ -3082,9 +3691,9 @@ export default function App() {
               <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Confirm New Password</label>
               <div style={{ position: 'relative' }}>
                 <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input 
-                  type="password" 
-                  placeholder="Confirm New Password" 
+                <input
+                  type="password"
+                  placeholder="Confirm New Password"
                   value={confirmNewPassword}
                   onChange={(e) => setConfirmNewPassword(e.target.value)}
                   className="custom-input"
@@ -3110,9 +3719,9 @@ export default function App() {
               </div>
             )}
 
-            <button 
-              type="submit" 
-              className="pg-btn" 
+            <button
+              type="submit"
+              className="pg-btn"
               style={{
                 width: '100%',
                 height: '42px',
@@ -3133,7 +3742,17 @@ export default function App() {
 
   return (
     <div className="dashboard-container">
-      
+
+      {/* Tab switch overlay */}
+      {isTabProcessing && (
+        <div className="tab-processing-overlay" role="status" aria-live="polite">
+          <div className="tab-processing-card">
+            <div className="tab-processing-spinner"></div>
+            <div className="tab-processing-text">Processing... Please Wait</div>
+          </div>
+        </div>
+      )}
+
       {/* 1. Header Area */}
       <header className="dashboard-header">
         <div className="header-left">
@@ -3142,8 +3761,8 @@ export default function App() {
         <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           {currentUser && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem' }}>
-              <div 
-                className="user-badge-container" 
+              <div
+                className="user-badge-container"
                 style={{ position: 'relative', display: 'inline-block' }}
                 onMouseEnter={() => setShowUserTooltip(true)}
                 onMouseLeave={() => setShowUserTooltip(false)}
@@ -3159,7 +3778,7 @@ export default function App() {
                 }}>
                   👤 {currentUser.name.toUpperCase()} ({currentUser.type})
                 </span>
-                
+
                 {showUserTooltip && (
                   <div className="user-tooltip" style={{
                     position: 'absolute',
@@ -3192,7 +3811,7 @@ export default function App() {
                   </div>
                 )}
               </div>
-              <button 
+              <button
                 onClick={() => {
                   setVCurrentPassword('');
                   setVNewPassword('');
@@ -3215,7 +3834,7 @@ export default function App() {
               >
                 <Key size={14} /> Change Password
               </button>
-              <button 
+              <button
                 onClick={handleLogout}
                 className="pg-btn"
                 style={{
@@ -3234,8 +3853,8 @@ export default function App() {
               </button>
             </div>
           )}
-          <button 
-            className="theme-toggle-btn" 
+          <button
+            className="theme-toggle-btn"
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             title="Toggle Theme"
             style={{ height: '32px', width: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -3249,41 +3868,55 @@ export default function App() {
       <div className="controls-panel">
         <div className="tab-navigation">
           {hasRight('budget') && (
-            <button 
+            <button
               className={`tab-btn ${activeTab === 'budget' ? 'active' : ''}`}
-              onClick={() => setActiveTab('budget')}
+              onClick={() => switchTab('budget')}
             >
               <BarChart2 size={16} /> Budget Report
             </button>
           )}
           {hasRight('elekha') && (
-            <button 
+            <button
               className={`tab-btn ${activeTab === 'elekha' ? 'active' : ''}`}
-              onClick={() => setActiveTab('elekha')}
+              onClick={() => switchTab('elekha')}
             >
               <FileText size={16} /> e-Lekha Transactions
             </button>
           )}
           {hasRight('revenue') && (
-            <button 
+            <button
               className={`tab-btn ${activeTab === 'revenue' ? 'active' : ''}`}
-              onClick={() => setActiveTab('revenue')}
+              onClick={() => switchTab('revenue')}
             >
               <Coins size={16} /> Vertical Revenue
+              {IS_VERTICAL_REVENUE_UNDER_MAINTENANCE && (
+                <span style={{
+                  fontSize: '0.65rem',
+                  padding: '2px 6px',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(217, 154, 61, 0.2)',
+                  color: 'var(--color-warning)',
+                  fontWeight: 700,
+                  marginLeft: '6px',
+                  border: '1px solid rgba(217, 154, 61, 0.4)'
+                }}>
+                  Maintenance
+                </span>
+              )}
             </button>
           )}
           {currentUser && currentUser.type === 'SA' && hasRight('users') && (
-            <button 
+            <button
               className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-              onClick={() => setActiveTab('users')}
+              onClick={() => switchTab('users')}
             >
               <User size={16} /> User Management
             </button>
           )}
           {currentUser && currentUser.type === 'SA' && hasRight('sync') && (
-            <button 
+            <button
               className={`tab-btn ${activeTab === 'sync' ? 'active' : ''}`}
-              onClick={() => setActiveTab('sync')}
+              onClick={() => switchTab('sync')}
             >
               <RefreshCw size={16} /> Database Sync
             </button>
@@ -3295,9 +3928,9 @@ export default function App() {
           <div className="filters-row">
             <div className="input-group">
               <Search className="input-icon" size={16} />
-              <input 
-                type="text" 
-                placeholder="Search Region, DDO, HO, Division, HOA, Description..." 
+              <input
+                type="text"
+                placeholder="Search Region, DDO, HO, Division, HOA, Description..."
                 className="custom-input"
                 value={elekhaSearch}
                 onChange={(e) => {
@@ -3314,9 +3947,9 @@ export default function App() {
           <div className="filters-row">
             <div className="input-group">
               <Search className="input-icon" size={16} />
-              <input 
-                type="text" 
-                placeholder="Search Office ID, Name of Unit, Region, HOA, Description..." 
+              <input
+                type="text"
+                placeholder="Search Office ID, Name of Unit, Region, HOA, Description..."
                 className="custom-input"
                 value={budgetSearch}
                 onChange={(e) => {
@@ -3367,7 +4000,7 @@ export default function App() {
 
       {/* 5. Main Card Content Area */}
       <main className="main-card">
-        
+
         {/* Tab 1: Budget Report View (As per budget report.csv) */}
         {activeTab === 'budget' && (
           <>
@@ -3391,6 +4024,38 @@ export default function App() {
                   {formatINR(budgetKpis.diff)}
                 </div>
               </div>
+              <div className="budget-summary-card">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginBottom: '4px' }}>
+                  <h5 style={{ margin: 0 }}>Balance</h5>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem' }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', margin: 0, fontWeight: balanceType === 'elekha' ? 700 : 400, color: balanceType === 'elekha' ? 'var(--color-primary)' : 'var(--text-secondary)' }}>
+                      <input
+                        type="radio"
+                        name="balanceBasisRadio"
+                        value="elekha"
+                        checked={balanceType === 'elekha'}
+                        onChange={() => setBalanceType('elekha')}
+                        style={{ cursor: 'pointer', margin: 0 }}
+                      />
+                      <span>e-Lekha</span>
+                    </label>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', margin: 0, fontWeight: balanceType === 'apt' ? 700 : 400, color: balanceType === 'apt' ? 'var(--color-primary)' : 'var(--text-secondary)' }}>
+                      <input
+                        type="radio"
+                        name="balanceBasisRadio"
+                        value="apt"
+                        checked={balanceType === 'apt'}
+                        onChange={() => setBalanceType('apt')}
+                        style={{ cursor: 'pointer', margin: 0 }}
+                      />
+                      <span>APT</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="value" style={{ color: budgetKpis.balance < 0 ? 'var(--color-error)' : 'inherit' }}>
+                  {formatINR(budgetKpis.balance)}
+                </div>
+              </div>
               <div className="budget-summary-card rate">
                 <h5>APT Util. Rate</h5>
                 <div className="value">{budgetKpis.aptUtil.toFixed(1)}%</div>
@@ -3399,134 +4064,361 @@ export default function App() {
                 <h5>e-Lekha Util. Rate</h5>
                 <div className="value">{budgetKpis.elekhaUtil.toFixed(1)}%</div>
               </div>
-              <div className="budget-summary-card report-date">
-                <h5>Report Date</h5>
-                <div className="value">{formatReportDate(budgetReportDate)}</div>
+
+            </div>
+
+            {/* Scheme Fund & Non-Scheme Fund Single Line */}
+            <div className="scheme-fund-bar" style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+              padding: '0.65rem 1.25rem',
+              backgroundColor: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 'var(--radius-md)',
+              marginTop: '0.75rem',
+              marginBottom: '0.75rem',
+              flexWrap: 'wrap'
+            }}>
+              {/* Scheme Fund Group */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
+                <span style={{
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  color: fundFilter === 'scheme' ? 'var(--color-primary)' : 'var(--text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}>
+                  🏛️ Scheme Fund:
+                </span>
+
+                {/* Clickable Scheme Fund Allot button to filter table */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFundFilter(prev => prev === 'scheme' ? 'all' : 'scheme');
+                    setBudgetPage(0);
+                  }}
+                  title="Click to filter table by Scheme Fund. Click again to show all data."
+                  style={{
+                    cursor: 'pointer',
+                    padding: '3px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: fundFilter === 'scheme' ? '2px solid var(--color-primary)' : '1px solid var(--border-color)',
+                    backgroundColor: fundFilter === 'scheme' ? 'rgba(74, 222, 128, 0.15)' : 'var(--bg-input)',
+                    color: fundFilter === 'scheme' ? 'var(--color-primary)' : 'var(--text-primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <span style={{ color: 'var(--text-secondary)' }}>Allotted:</span>
+                  <strong style={{ color: fundFilter === 'scheme' ? 'var(--color-primary)' : 'inherit' }}>
+                    {formatINR(schemeFundKpis.schemeAllotted)}
+                  </strong>
+                  {fundFilter === 'scheme' && (
+                    <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--color-primary)', color: '#14210f', padding: '1px 5px', borderRadius: '3px', fontWeight: 'bold' }}>
+                      ✓
+                    </span>
+                  )}
+                </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Consumed:</span>
+                  <strong style={{ color: 'var(--color-primary)' }}>{formatINR(schemeFundKpis.schemeConsumed)}</strong>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>% Used:</span>
+                  <strong style={{
+                    color: schemeFundKpis.schemePct > 100 ? 'var(--color-error)' : schemeFundKpis.schemePct >= 85 ? 'var(--color-warning)' : 'var(--color-success)'
+                  }}>
+                    {schemeFundKpis.schemePct.toFixed(1)}%
+                  </strong>
+                </div>
+              </div>
+
+              {/* Vertical divider */}
+              <div style={{ width: '1px', height: '22px', backgroundColor: 'var(--border-color)' }}></div>
+
+              {/* Non-Scheme Fund Group */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
+                <span style={{
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  color: fundFilter === 'non-scheme' ? 'var(--color-primary)' : 'var(--text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}>
+                  📁 Non-Scheme Fund:
+                </span>
+
+                {/* Clickable Non-Scheme Fund Allot button to filter table */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFundFilter(prev => prev === 'non-scheme' ? 'all' : 'non-scheme');
+                    setBudgetPage(0);
+                  }}
+                  title="Click to filter table by Non-Scheme Fund. Click again to show all data."
+                  style={{
+                    cursor: 'pointer',
+                    padding: '3px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: fundFilter === 'non-scheme' ? '2px solid var(--color-primary)' : '1px solid var(--border-color)',
+                    backgroundColor: fundFilter === 'non-scheme' ? 'rgba(74, 222, 128, 0.15)' : 'var(--bg-input)',
+                    color: fundFilter === 'non-scheme' ? 'var(--color-primary)' : 'var(--text-primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <span style={{ color: 'var(--text-secondary)' }}>Allotted:</span>
+                  <strong style={{ color: fundFilter === 'non-scheme' ? 'var(--color-primary)' : 'inherit' }}>
+                    {formatINR(schemeFundKpis.nonSchemeAllotted)}
+                  </strong>
+                  {fundFilter === 'non-scheme' && (
+                    <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--color-primary)', color: '#14210f', padding: '1px 5px', borderRadius: '3px', fontWeight: 'bold' }}>
+                      ✓
+                    </span>
+                  )}
+                </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Consumed:</span>
+                  <strong style={{ color: 'var(--color-primary)' }}>{formatINR(schemeFundKpis.nonSchemeConsumed)}</strong>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>% Used:</span>
+                  <strong style={{
+                    color: schemeFundKpis.nonSchemePct > 100 ? 'var(--color-error)' : schemeFundKpis.nonSchemePct >= 85 ? 'var(--color-warning)' : 'var(--color-success)'
+                  }}>
+                    {schemeFundKpis.nonSchemePct.toFixed(1)}%
+                  </strong>
+                </div>
+              </div>
+
+              {/* Consumed Option dropdown (apt / elekha, default elekha) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Consumed View:</span>
+                <select
+                  value={schemeConsumedSource}
+                  onChange={(e) => setSchemeConsumedSource(e.target.value)}
+                  className="custom-select"
+                  style={{ padding: '2px 8px', fontSize: '0.78rem', height: '28px' }}
+                >
+                  <option value="elekha">e-Lekha Consumed</option>
+                  <option value="apt">APT Consumed</option>
+                </select>
               </div>
             </div>
 
             {/* Percentage Search & Global filters bar */}
-            <div className="pct-search-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Filter by % Consumed:</span>
-                <select 
-                  className="custom-select" 
-                  value={pctSearchType} 
-                  onChange={(e) => setPctSearchType(e.target.value)}
-                  style={{ padding: '4px 8px', fontSize: '0.8rem', minWidth: '150px', height: '32px' }}
-                >
-                  <option value="apt">APT Consumed %</option>
-                  <option value="elekha">e-Lekha Consumed %</option>
-                </select>
-                <input 
-                  type="text" 
-                  placeholder="e.g. 85" 
-                  value={pctSearchVal}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, ''); // only digits
-                    if (val.length <= 3) {
-                      setPctSearchVal(val);
-                      setBudgetPage(0);
-                    }
-                  }}
-                  style={{
-                    width: '70px',
-                    padding: '4px 8px',
-                    fontSize: '0.8rem',
-                    borderRadius: '4px',
-                    border: '1px solid var(--border-color)',
-                    backgroundColor: 'var(--bg-input)',
-                    color: 'var(--text-primary)',
-                    height: '32px',
-                    textAlign: 'center'
-                  }}
-                />
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>% or more</span>
-
-                <button
-                  type="button"
-                  className={`pg-btn ${isAnalysisMode ? 'active' : ''}`}
-                  onClick={() => {
-                    setIsAnalysisMode(!isAnalysisMode);
-                    setSelectedAnalysisType('all');
-                    if (isChartMode) setIsChartMode(false);
-                  }}
-                  style={{
-                    height: '32px',
-                    padding: '0 12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontWeight: 'bold',
-                    backgroundColor: isAnalysisMode ? 'var(--color-primary)' : 'var(--bg-input)',
-                    color: isAnalysisMode ? '#14210f' : 'var(--text-secondary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 'var(--radius-sm)',
-                    marginLeft: '8px'
-                  }}
-                >
-                  <AlertTriangle size={14} /> Analysis
-                </button>
-
-                <button
-                  type="button"
-                  className={`pg-btn ${isChartMode ? 'active' : ''}`}
-                  onClick={() => {
-                    setIsChartMode(!isChartMode);
-                    if (isAnalysisMode) setIsAnalysisMode(false);
-                  }}
-                  style={{
-                    height: '32px',
-                    padding: '0 12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontWeight: 'bold',
-                    backgroundColor: isChartMode ? 'var(--color-primary)' : 'var(--bg-input)',
-                    color: isChartMode ? '#14210f' : 'var(--text-secondary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 'var(--radius-sm)'
-                  }}
-                >
-                  <BarChart2 size={14} /> Chart
-                </button>
+            <div className="pct-search-container bubble-row">
+              {/* % Consumed Filter Bubble (without title) */}
+              <div className="filter-bubble bubble-pct">
+                <div className="bubble-body">
+                  <select
+                    className="custom-select"
+                    value={pctSearchType}
+                    onChange={(e) => setPctSearchType(e.target.value)}
+                    style={{ padding: '4px 8px', fontSize: '0.8rem', minWidth: '145px', height: '32px' }}
+                  >
+                    <option value="apt">APT Consumed %</option>
+                    <option value="elekha">e-Lekha Consumed %</option>
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="e.g. 85"
+                    value={pctSearchVal}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, ''); // only digits
+                      if (val.length <= 3) {
+                        setPctSearchVal(val);
+                        setBudgetPage(0);
+                      }
+                    }}
+                    style={{
+                      width: '60px',
+                      padding: '4px 8px',
+                      fontSize: '0.8rem',
+                      borderRadius: '4px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-input)',
+                      color: 'var(--text-primary)',
+                      height: '32px',
+                      textAlign: 'center'
+                    }}
+                  />
+                  <span style={{ fontSize: '0.82rem', color: '#ffffff', fontWeight: 600 }}>% or more</span>
+                </div>
               </div>
 
-              {/* Status & Region filters */}
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Region:</span>
-                  <select 
-                    value={budgetRegion} 
-                    onChange={(e) => { setBudgetRegion(e.target.value); setBudgetPage(0); }}
-                    className="custom-select"
-                    style={{ padding: '4px 8px', fontSize: '0.8rem', height: '32px' }}
+              {/* Separate Bubble for Analysis & Chart */}
+              <div className="filter-bubble bubble-tools">
+                <div className="bubble-body" style={{ gap: '6px' }}>
+                  <button
+                    type="button"
+                    className={`pg-btn ${isAnalysisMode ? 'active' : ''}`}
+                    onClick={() => {
+                      setIsAnalysisMode(!isAnalysisMode);
+                      setSelectedAnalysisType('all');
+                      if (isChartMode) setIsChartMode(false);
+                    }}
+                    style={{
+                      height: '30px',
+                      padding: '0 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontWeight: 'bold',
+                      fontSize: '0.78rem',
+                      borderRadius: '999px',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
                   >
-                    <option value="All">All Regions</option>
-                    {budgetRegionOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                    <AlertTriangle size={13} /> Analysis
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`pg-btn ${isChartMode ? 'active' : ''}`}
+                    onClick={() => {
+                      setIsChartMode(!isChartMode);
+                      if (isAnalysisMode) setIsAnalysisMode(false);
+                    }}
+                    style={{
+                      height: '30px',
+                      padding: '0 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontWeight: 'bold',
+                      fontSize: '0.78rem',
+                      borderRadius: '999px',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <BarChart2 size={13} /> Chart
+                  </button>
+                </div>
+              </div>
+
+              {/* Object Head filter (without title) */}
+              <div className="filter-bubble bubble-object">
+                <div className="bubble-body">
+                  <select
+                    value={budgetObjectHead}
+                    onChange={(e) => { setBudgetObjectHead(e.target.value); setBudgetPage(0); }}
+                    className="custom-select"
+                    style={{ padding: '4px 10px', fontSize: '0.8rem', height: '32px', minWidth: '190px', maxWidth: '240px' }}
+                  >
+                    <option value="All">All Object Heads</option>
+                    {availableObjectHeads.map(h => (
+                      <option key={h.code} value={h.code}>
+                        {h.code} - {h.title}
+                      </option>
+                    ))}
                   </select>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Status:</span>
-                  <select 
-                    value={budgetFilterStatus} 
-                    onChange={(e) => { setBudgetFilterStatus(e.target.value); setBudgetPage(0); }}
-                    className="custom-select"
-                    style={{ padding: '4px 8px', fontSize: '0.8rem', height: '32px' }}
+              </div>
+
+              {/* Region & Status filters (without title) */}
+              <div className="filter-bubble bubble-region">
+                <div className="bubble-body">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#ffffff', fontWeight: 600 }}>Region:</span>
+                    <select
+                      value={budgetRegion}
+                      onChange={(e) => { setBudgetRegion(e.target.value); setBudgetPage(0); }}
+                      className="custom-select"
+                      style={{ padding: '4px 8px', fontSize: '0.8rem', height: '32px' }}
+                    >
+                      <option value="All">All Regions</option>
+                      {budgetRegionOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#ffffff', fontWeight: 600 }}>Status:</span>
+                    <select
+                      value={budgetFilterStatus}
+                      onChange={(e) => { setBudgetFilterStatus(e.target.value); setBudgetPage(0); }}
+                      className="custom-select"
+                      style={{ padding: '4px 8px', fontSize: '0.8rem', height: '32px' }}
+                    >
+                      <option value="All">All Statuses</option>
+                      <option value="Over">Over Budget (&gt; 100%)</option>
+                      <option value="Warning">Warning (85% - 100%)</option>
+                      <option value="Safe">Safe (&lt; 85%)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Report Date Bubble (placed immediately to left of Export in small, clear font) */}
+              <div className="filter-bubble bubble-date">
+                <div className="bubble-body" style={{ padding: '0 4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.76rem', color: '#ffffff', whiteSpace: 'nowrap' }}>
+                    <span style={{ opacity: 0.9, fontWeight: 500 }}>Report Date:</span>
+                    <strong style={{ color: '#fef08a', letterSpacing: '0.2px', fontSize: '0.78rem' }}>
+                      {formatReportDate(budgetReportDate) || '–'}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Export Dropdown in Bubble Format (without title) */}
+              <div
+                className="filter-bubble bubble-export export-dropdown"
+                onClick={(e) => e.stopPropagation()}
+                style={{ position: 'relative', zIndex: exportMenuOpen ? 10000 : 5 }}
+              >
+                <div className="bubble-body" style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    className="export-trigger"
+                    onClick={() => setExportMenuOpen(o => !o)}
+                    disabled={filteredBudgetData.length === 0}
+                    aria-haspopup="menu"
+                    aria-expanded={exportMenuOpen}
+                    style={{ height: '30px', padding: '0 12px', fontSize: '0.8rem', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                   >
-                    <option value="All">All Statuses</option>
-                    <option value="Over">Over Budget (&gt; 100%)</option>
-                    <option value="Warning">Warning (85% - 100%)</option>
-                    <option value="Safe">Safe (&lt; 85%)</option>
-                  </select>
+                    <Download size={14} /> Export
+                    <ChevronDown size={14} className={`chev ${exportMenuOpen ? 'open' : ''}`} />
+                  </button>
+                  {exportMenuOpen && (
+                    <div className="export-menu" role="menu" style={{ display: 'flex', flexDirection: 'column', zIndex: 99999 }}>
+                      <button type="button" role="menuitem" className="export-item pdf" onClick={() => { handleExportBudgetPDF(); setExportMenuOpen(false); }}>
+                        <FileDown size={16} /> Export to PDF
+                      </button>
+                      <button type="button" role="menuitem" className="export-item excel" onClick={() => { handleExportBudgetExcel(); setExportMenuOpen(false); }}>
+                        <FileSpreadsheet size={16} /> Export to Excel
+                      </button>
+                      <button type="button" role="menuitem" className="export-item csv" onClick={() => { handleExportBudgetCSV(); setExportMenuOpen(false); }}>
+                        <FileText size={16} /> Export to CSV
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Analysis Collapsible Panel */}
             {isAnalysisMode && (
-              <div 
-                className="analysis-panel" 
+              <div
+                className="analysis-panel"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
@@ -3539,7 +4431,7 @@ export default function App() {
                 }}
               >
                 {/* Over-Utilized card */}
-                <div 
+                <div
                   className={`analysis-card ${selectedAnalysisType === 'over' ? 'active' : ''}`}
                   onClick={() => {
                     setSelectedAnalysisType(selectedAnalysisType === 'over' ? 'all' : 'over');
@@ -3570,7 +4462,7 @@ export default function App() {
                 </div>
 
                 {/* Under-Utilized card */}
-                <div 
+                <div
                   className={`analysis-card ${selectedAnalysisType === 'under' ? 'active' : ''}`}
                   onClick={() => {
                     setSelectedAnalysisType(selectedAnalysisType === 'under' ? 'all' : 'under');
@@ -3601,7 +4493,7 @@ export default function App() {
                 </div>
 
                 {/* Consumed without Allotment card */}
-                <div 
+                <div
                   className={`analysis-card ${selectedAnalysisType === 'no_allotment' ? 'active' : ''}`}
                   onClick={() => {
                     setSelectedAnalysisType(selectedAnalysisType === 'no_allotment' ? 'all' : 'no_allotment');
@@ -3634,8 +4526,8 @@ export default function App() {
 
             {/* Chart Collapsible Panel */}
             {isChartMode && budgetChartData.length > 0 && (
-              <div 
-                className="chart-panel" 
+              <div
+                className="chart-panel"
                 style={{
                   backgroundColor: 'rgba(0, 0, 0, 0.2)',
                   border: '1px solid var(--border-color)',
@@ -3648,9 +4540,9 @@ export default function App() {
                   <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                       <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Group By</label>
-                      <select 
-                        className="custom-select" 
-                        value={selectedChartGroupBy} 
+                      <select
+                        className="custom-select"
+                        value={selectedChartGroupBy}
                         onChange={(e) => {
                           setSelectedChartGroupBy(e.target.value);
                           if (e.target.value === 'status') {
@@ -3668,9 +4560,9 @@ export default function App() {
                     {selectedChartGroupBy !== 'status' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Metric</label>
-                        <select 
-                          className="custom-select" 
-                          value={selectedChartMetric} 
+                        <select
+                          className="custom-select"
+                          value={selectedChartMetric}
                           onChange={(e) => setSelectedChartMetric(e.target.value)}
                           style={{ height: '32px', minWidth: '180px', padding: '2px 8px', fontSize: '0.8rem' }}
                         >
@@ -3702,19 +4594,19 @@ export default function App() {
                 </div>
 
                 {selectedChartType === 'pie' ? (
-                  <SVGPieChart 
-                    data={budgetChartData} 
-                    colors={['#c9a227', '#1f6f5c', '#a97e1f', '#4c7ea8', '#8a6d2f', '#2f9e6b', '#b08d3e', '#5c8ca0', '#d99a3d', '#6f8f7c']} 
+                  <SVGPieChart
+                    data={budgetChartData}
+                    colors={['#c9a227', '#1f6f5c', '#a97e1f', '#4c7ea8', '#8a6d2f', '#2f9e6b', '#b08d3e', '#5c8ca0', '#d99a3d', '#6f8f7c']}
                   />
                 ) : selectedChartType === 'bar' ? (
-                  <SVGBarChart 
-                    data={budgetChartData} 
-                    colors={['#c9a227', '#1f6f5c']} 
+                  <SVGBarChart
+                    data={budgetChartData}
+                    colors={['#c9a227', '#1f6f5c']}
                   />
                 ) : (
-                  <SVGLineChart 
-                    data={budgetChartData} 
-                    colors={['#c9a227', '#1f6f5c']} 
+                  <SVGLineChart
+                    data={budgetChartData}
+                    colors={['#c9a227', '#1f6f5c']}
                   />
                 )}
                 {selectedChartType !== 'pie' && selectedChartGroupBy !== 'status' && selectedChartMetric === 'consumed' && (
@@ -3732,114 +4624,119 @@ export default function App() {
               </div>
             )}
 
-            <div className="card-title-row" style={{ marginTop: '1rem' }}>
-              <h2>Office Budget Utilization Summary</h2>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                Loaded <strong>{filteredBudgetData.length}</strong> matching records from <code>budget report.csv</code>
-              </div>
-            </div>
+            <div style={{ marginTop: '0.75rem' }}></div>
 
-            <div className="table-wrapper top-scrollbar">
+            <TopScrollbar targetRef={budgetTableWrapperRef} />
+            <div ref={budgetTableWrapperRef} className="table-wrapper top-scrollbar" style={{ maxHeight: '144vh', overflowY: 'auto', overflowX: 'auto', position: 'relative' }}>
               <table className="premium-table">
                 <thead>
                   <tr>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="Office ID" 
-                        columnName="Office ID" 
-                        allValues={getFilteredDataForColumn('Office ID').map(d => d['Office ID'])} 
-                        selectedFilters={budgetColumnFilters['Office ID']} 
-                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Office ID"
+                        columnName="Office ID"
+                        allValues={getFilteredDataForColumn('Office ID').map(d => d['Office ID'])}
+                        selectedFilters={budgetColumnFilters['Office ID']}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="Name of Unit (HO/Division)" 
-                        columnName="Name of Unit (HO/Division)" 
-                        allValues={getFilteredDataForColumn('Name of Unit (HO/Division)').map(d => d['Name of Unit (HO/Division)'])} 
-                        selectedFilters={budgetColumnFilters['Name of Unit (HO/Division)']} 
-                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Name of Unit (HO/Division)"
+                        columnName="Name of Unit (HO/Division)"
+                        allValues={getFilteredDataForColumn('Name of Unit (HO/Division)').map(d => d['Name of Unit (HO/Division)'])}
+                        selectedFilters={budgetColumnFilters['Name of Unit (HO/Division)']}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="Region" 
-                        columnName="Region" 
-                        allValues={getFilteredDataForColumn('Region').map(d => d.Region)} 
-                        selectedFilters={budgetColumnFilters.Region} 
-                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Region"
+                        columnName="Region"
+                        allValues={getFilteredDataForColumn('Region').map(d => d.Region)}
+                        selectedFilters={budgetColumnFilters.Region}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="HOA" 
-                        columnName="HOA" 
-                        allValues={getFilteredDataForColumn('HOA').map(d => d.HOA)} 
-                        selectedFilters={budgetColumnFilters.HOA} 
-                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="HOA"
+                        columnName="HOA"
+                        allValues={getFilteredDataForColumn('HOA').map(d => d.HOA)}
+                        selectedFilters={budgetColumnFilters.HOA}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="Description" 
-                        columnName="Description" 
-                        allValues={getFilteredDataForColumn('Description').map(d => d.Description)} 
-                        selectedFilters={budgetColumnFilters.Description} 
-                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Description"
+                        columnName="Description"
+                        allValues={getFilteredDataForColumn('Description').map(d => d.Description)}
+                        selectedFilters={budgetColumnFilters.Description}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th className="text-right">
-                      <ColumnHeaderFilter 
-                        title="APT Alloted" 
-                        columnName="APT Alloted" 
-                        allValues={getFilteredDataForColumn('APT Alloted').map(d => String(d['APT Alloted'] || 0))} 
-                        selectedFilters={budgetColumnFilters['APT Alloted']} 
-                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="APT Alloted"
+                        columnName="APT Alloted"
+                        allValues={getFilteredDataForColumn('APT Alloted').map(d => String(d['APT Alloted'] || 0))}
+                        selectedFilters={budgetColumnFilters['APT Alloted']}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th className="text-right">
-                      <ColumnHeaderFilter 
-                        title="APT Consumed" 
-                        columnName="APT Consumed" 
-                        allValues={getFilteredDataForColumn('APT Consumed').map(d => String(d['APT Consumed'] || 0))} 
-                        selectedFilters={budgetColumnFilters['APT Consumed']} 
-                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="APT Consumed"
+                        columnName="APT Consumed"
+                        allValues={getFilteredDataForColumn('APT Consumed').map(d => String(d['APT Consumed'] || 0))}
+                        selectedFilters={budgetColumnFilters['APT Consumed']}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th className="text-right">
-                      <ColumnHeaderFilter 
-                        title="e-Lekha Consumed" 
-                        columnName="e-lekha Consumed" 
-                        allValues={getFilteredDataForColumn('e-lekha Consumed').map(d => String(d['e-lekha Consumed'] || 0))} 
-                        selectedFilters={budgetColumnFilters['e-lekha Consumed']} 
-                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="e-Lekha Consumed"
+                        columnName="e-lekha Consumed"
+                        allValues={getFilteredDataForColumn('e-lekha Consumed').map(d => String(d['e-lekha Consumed'] || 0))}
+                        selectedFilters={budgetColumnFilters['e-lekha Consumed']}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th className="text-right">
-                      <ColumnHeaderFilter 
-                        title="Diff. (APT - e-Lekha)" 
-                        columnName="Diff. (APT - e-Lekha)" 
-                        allValues={getFilteredDataForColumn('Diff. (APT - e-Lekha)').map(d => String(d['Diff. (APT - e-Lekha)'] || 0))} 
-                        selectedFilters={budgetColumnFilters['Diff. (APT - e-Lekha)']} 
-                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Diff. (APT - e-Lekha)"
+                        columnName="Diff. (APT - e-Lekha)"
+                        allValues={getFilteredDataForColumn('Diff. (APT - e-Lekha)').map(d => String(d['Diff. (APT - e-Lekha)'] || 0))}
+                        selectedFilters={budgetColumnFilters['Diff. (APT - e-Lekha)']}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th className="text-right">
-                      <ColumnHeaderFilter 
-                        title="APT Consumed %" 
-                        columnName="APT Consumed %" 
-                        allValues={getFilteredDataForColumn('APT Consumed %').map(d => typeof d['APT Consumed %'] === 'number' ? d['APT Consumed %'].toFixed(2) : String(d['APT Consumed %']))} 
-                        selectedFilters={budgetColumnFilters['APT Consumed %']} 
-                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Balance"
+                        columnName="Balance"
+                        allValues={getFilteredDataForColumn('Balance').map(d => String(d['Balance'] || 0))}
+                        selectedFilters={budgetColumnFilters['Balance']}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th className="text-right">
-                      <ColumnHeaderFilter 
-                        title="e-Lekha Consumed %" 
-                        columnName="e-Lekha Consumed %" 
-                        allValues={getFilteredDataForColumn('e-Lekha Consumed %').map(d => typeof d['e-Lekha Consumed %'] === 'number' ? d['e-Lekha Consumed %'].toFixed(2) : String(d['e-Lekha Consumed %']))} 
-                        selectedFilters={budgetColumnFilters['e-Lekha Consumed %']} 
-                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="APT Consumed %"
+                        columnName="APT Consumed %"
+                        allValues={getFilteredDataForColumn('APT Consumed %').map(d => typeof d['APT Consumed %'] === 'number' ? d['APT Consumed %'].toFixed(2) : String(d['APT Consumed %']))}
+                        selectedFilters={budgetColumnFilters['APT Consumed %']}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
+                      />
+                    </th>
+                    <th className="text-right">
+                      <ColumnHeaderFilter
+                        title="e-Lekha Consumed %"
+                        columnName="e-Lekha Consumed %"
+                        allValues={getFilteredDataForColumn('e-Lekha Consumed %').map(d => typeof d['e-Lekha Consumed %'] === 'number' ? d['e-Lekha Consumed %'].toFixed(2) : String(d['e-Lekha Consumed %']))}
+                        selectedFilters={budgetColumnFilters['e-Lekha Consumed %']}
+                        onChange={(col, val) => setBudgetColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                   </tr>
@@ -3847,7 +4744,7 @@ export default function App() {
                 <tbody>
                   {filteredBudgetData.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="text-center" style={{ padding: '3rem', color: 'var(--text-secondary)' }}>
+                      <td colSpan={12} className="text-center" style={{ padding: '3rem', color: 'var(--text-secondary)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                           <AlertCircle size={24} style={{ color: 'var(--color-warning)' }} />
                           <span style={{ fontWeight: 600 }}>No budget records matching the active filters.</span>
@@ -3873,8 +4770,8 @@ export default function App() {
                           <tr>
                             <td>
                               {eLekhaTxns.length > 0 ? (
-                                <button 
-                                  onClick={() => setExpandedBudgetRows(prev => ({ ...prev, [rowKey]: !isExpanded }))} 
+                                <button
+                                  onClick={() => setExpandedBudgetRows(prev => ({ ...prev, [rowKey]: !isExpanded }))}
                                   className="expand-btn"
                                   title="Toggle transactions view"
                                 >
@@ -3897,6 +4794,9 @@ export default function App() {
                             <td className="text-right" style={{ color: row['Diff. (APT - e-Lekha)'] < 0 ? 'var(--color-error)' : 'inherit' }}>
                               {formatTableValue(row['Diff. (APT - e-Lekha)'])}
                             </td>
+                            <td className="text-right" style={{ fontWeight: 500, color: row['Balance'] < 0 ? 'var(--color-error)' : 'inherit' }}>
+                              {formatTableValue(row['Balance'])}
+                            </td>
                             <td className="text-right" style={{ fontWeight: 600, color: statusColor }}>
                               {typeof row['APT Consumed %'] === 'number' ? (row['APT Consumed %'].toFixed(2) + '%') : row['APT Consumed %']}
                             </td>
@@ -3906,7 +4806,7 @@ export default function App() {
                           </tr>
                           {isExpanded && (
                             <tr className="expanded-row">
-                              <td colSpan={11}>
+                              <td colSpan={12}>
                                 <div className="expanded-content">
                                   <h4>e-Lekha Transactions Breakdown ({eLekhaTxns.length} records)</h4>
                                   <table className="expanded-table">
@@ -3952,31 +4852,15 @@ export default function App() {
             {/* Pagination and Exports */}
             {filteredBudgetData.length > 0 && (
               <div className="pagination-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {/* Bottom Left Exports */}
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <button 
-                    onClick={handleExportBudgetCSV} 
-                    className="pg-btn" 
-                    style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', fontWeight: 600 }}
-                  >
-                    <Download size={14} /> Export to CSV
-                  </button>
-                  <button 
-                    onClick={handleExportBudgetExcel} 
-                    className="pg-btn" 
-                    style={{ backgroundColor: '#22c55e', color: 'white', border: 'none', fontWeight: 600 }}
-                  >
-                    <Download size={14} /> Export to Excel
-                  </button>
-                </div>
+                <div></div>
 
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   <div className="pagination-info">
                     Showing <strong>{budgetPage * budgetRowsPerPage + 1}</strong> to <strong>{Math.min((budgetPage + 1) * budgetRowsPerPage, filteredBudgetData.length)}</strong> of <strong>{filteredBudgetData.length}</strong> records
                   </div>
-                  <select 
-                    className="custom-select" 
-                    value={budgetRowsPerPage} 
+                  <select
+                    className="custom-select"
+                    value={budgetRowsPerPage}
                     onChange={(e) => {
                       setBudgetRowsPerPage(parseInt(e.target.value, 10));
                       setBudgetPage(0);
@@ -3989,9 +4873,9 @@ export default function App() {
                   </select>
 
                   <div className="pagination-buttons" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <button 
-                      className="pg-btn" 
-                      disabled={budgetPage === 0} 
+                    <button
+                      className="pg-btn"
+                      disabled={budgetPage === 0}
                       onClick={() => setBudgetPage(prev => Math.max(prev - 1, 0))}
                     >
                       <ChevronLeft size={16} /> Prev
@@ -3999,10 +4883,10 @@ export default function App() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Page:</span>
-                      <input 
-                        type="text" 
-                        className="custom-input" 
-                        value={budgetPageInput} 
+                      <input
+                        type="text"
+                        className="custom-input"
+                        value={budgetPageInput}
                         onChange={(e) => {
                           const val = e.target.value.replace(/\D/g, ''); // only digits
                           setBudgetPageInput(val);
@@ -4029,9 +4913,9 @@ export default function App() {
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/ {Math.ceil(filteredBudgetData.length / budgetRowsPerPage)}</span>
                     </div>
 
-                    <button 
-                      className="pg-btn" 
-                      disabled={(budgetPage + 1) * budgetRowsPerPage >= filteredBudgetData.length} 
+                    <button
+                      className="pg-btn"
+                      disabled={(budgetPage + 1) * budgetRowsPerPage >= filteredBudgetData.length}
                       onClick={() => setBudgetPage(prev => prev + 1)}
                     >
                       Next <ChevronRight size={16} />
@@ -4046,8 +4930,13 @@ export default function App() {
         {/* Tab 2: e-Lekha transactions list view */}
         {activeTab === 'elekha' && (
           <>
-            <div className="card-title-row elekha-title-row">
-              <h2>e-Lekha Transactions Table</h2>
+            <div className="card-title-row elekha-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h2>e-Lekha Transactions Table</h2>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  Loaded <strong>{filteredElekhaData.length}</strong> matching transactions
+                </div>
+              </div>
               <div className="elekha-inline-stats">
                 <div className="inline-stat">
                   <span className="inline-stat-label">No. of HOA</span>
@@ -4064,121 +4953,144 @@ export default function App() {
                   <span className="inline-stat-value">{elekhaKpis.numDivs}</span>
                 </div>
               </div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                Loaded <strong>{filteredElekhaData.length}</strong> matching transactions
+              <div className="export-dropdown" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className="export-trigger"
+                  onClick={() => setElekhaExportMenuOpen(o => !o)}
+                  disabled={filteredElekhaData.length === 0}
+                  style={{ height: '36px', padding: '0 14px', fontSize: '0.85rem' }}
+                >
+                  <Download size={14} /> Export
+                  <ChevronDown size={14} className={`chev ${elekhaExportMenuOpen ? 'open' : ''}`} />
+                </button>
+                {elekhaExportMenuOpen && (
+                  <div className="export-menu" role="menu">
+                    <button type="button" role="menuitem" className="export-item pdf" onClick={() => { handleExportElekhaPDF(); setElekhaExportMenuOpen(false); }}>
+                      <FileDown size={16} /> Export to PDF
+                    </button>
+                    <button type="button" role="menuitem" className="export-item excel" onClick={() => { handleExportElekhaExcel(); setElekhaExportMenuOpen(false); }}>
+                      <FileSpreadsheet size={16} /> Export to Excel
+                    </button>
+                    <button type="button" role="menuitem" className="export-item csv" onClick={() => { handleExportElekhaCSV(); setElekhaExportMenuOpen(false); }}>
+                      <FileText size={16} /> Export to CSV
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="table-wrapper top-scrollbar">
+            <TopScrollbar targetRef={elekhaTableWrapperRef} />
+            <div ref={elekhaTableWrapperRef} className="table-wrapper top-scrollbar" style={{ maxHeight: '144vh', overflowY: 'auto', overflowX: 'auto', position: 'relative' }}>
               <table className="premium-table">
                 <thead>
                   <tr>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="TE Number" 
-                        columnName="TE Number" 
-                        allValues={getFilteredElekhaDataForColumn('TE Number').map(d => String(d['TE Number'] || ''))} 
-                        selectedFilters={elekhaColumnFilters['TE Number']} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="TE Number"
+                        columnName="TE Number"
+                        allValues={getFilteredElekhaDataForColumn('TE Number').map(d => String(d['TE Number'] || ''))}
+                        selectedFilters={elekhaColumnFilters['TE Number']}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="Txn Date" 
-                        columnName="Txn Date" 
-                        allValues={getFilteredElekhaDataForColumn('Txn Date').map(d => d['Txn Date'])} 
-                        selectedFilters={elekhaColumnFilters['Txn Date']} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Txn Date"
+                        columnName="Txn Date"
+                        allValues={getFilteredElekhaDataForColumn('Txn Date').map(d => d['Txn Date'])}
+                        selectedFilters={elekhaColumnFilters['Txn Date']}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="Month" 
-                        columnName="Month" 
-                        allValues={getFilteredElekhaDataForColumn('Month').map(d => d.Month)} 
-                        selectedFilters={elekhaColumnFilters.Month} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Month"
+                        columnName="Month"
+                        allValues={getFilteredElekhaDataForColumn('Month').map(d => d.Month)}
+                        selectedFilters={elekhaColumnFilters.Month}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="Region" 
-                        columnName="Region" 
-                        allValues={getFilteredElekhaDataForColumn('Region').map(d => d.Region)} 
-                        selectedFilters={elekhaColumnFilters.Region} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Region"
+                        columnName="Region"
+                        allValues={getFilteredElekhaDataForColumn('Region').map(d => d.Region)}
+                        selectedFilters={elekhaColumnFilters.Region}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="DDO" 
-                        columnName="DDO Code" 
-                        allValues={getFilteredElekhaDataForColumn('DDO Code').map(d => d['DDO Code'])} 
-                        selectedFilters={elekhaColumnFilters['DDO Code']} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="DDO"
+                        columnName="DDO Code"
+                        allValues={getFilteredElekhaDataForColumn('DDO Code').map(d => d['DDO Code'])}
+                        selectedFilters={elekhaColumnFilters['DDO Code']}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="HO" 
-                        columnName="HO" 
-                        allValues={getFilteredElekhaDataForColumn('HO').map(d => d.HO)} 
-                        selectedFilters={elekhaColumnFilters.HO} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="HO"
+                        columnName="HO"
+                        allValues={getFilteredElekhaDataForColumn('HO').map(d => d.HO)}
+                        selectedFilters={elekhaColumnFilters.HO}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="Division" 
-                        columnName="Division" 
-                        allValues={getFilteredElekhaDataForColumn('Division').map(d => d.Division)} 
-                        selectedFilters={elekhaColumnFilters.Division} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Division"
+                        columnName="Division"
+                        allValues={getFilteredElekhaDataForColumn('Division').map(d => d.Division)}
+                        selectedFilters={elekhaColumnFilters.Division}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="HOA" 
-                        columnName="HOA" 
-                        allValues={getFilteredElekhaDataForColumn('HOA').map(d => d.HOA)} 
-                        selectedFilters={elekhaColumnFilters.HOA} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="HOA"
+                        columnName="HOA"
+                        allValues={getFilteredElekhaDataForColumn('HOA').map(d => d.HOA)}
+                        selectedFilters={elekhaColumnFilters.HOA}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="Description" 
-                        columnName="Description" 
-                        allValues={getFilteredElekhaDataForColumn('Description').map(d => d.Description)} 
-                        selectedFilters={elekhaColumnFilters.Description} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Description"
+                        columnName="Description"
+                        allValues={getFilteredElekhaDataForColumn('Description').map(d => d.Description)}
+                        selectedFilters={elekhaColumnFilters.Description}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th className="text-right">
-                      <ColumnHeaderFilter 
-                        title="Receipts" 
-                        columnName="Receipt (Rs.)" 
-                        allValues={getFilteredElekhaDataForColumn('Receipt (Rs.)').map(d => String(d['Receipt (Rs.)'] || '0').trim())} 
-                        selectedFilters={elekhaColumnFilters['Receipt (Rs.)']} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Receipts"
+                        columnName="Receipt (Rs.)"
+                        allValues={getFilteredElekhaDataForColumn('Receipt (Rs.)').map(d => String(d['Receipt (Rs.)'] || '0').trim())}
+                        selectedFilters={elekhaColumnFilters['Receipt (Rs.)']}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th className="text-right">
-                      <ColumnHeaderFilter 
-                        title="Payments" 
-                        columnName="Payment (Rs.)" 
-                        allValues={getFilteredElekhaDataForColumn('Payment (Rs.)').map(d => String(d['Payment (Rs.)'] || '0').trim())} 
-                        selectedFilters={elekhaColumnFilters['Payment (Rs.)']} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Payments"
+                        columnName="Payment (Rs.)"
+                        allValues={getFilteredElekhaDataForColumn('Payment (Rs.)').map(d => String(d['Payment (Rs.)'] || '0').trim())}
+                        selectedFilters={elekhaColumnFilters['Payment (Rs.)']}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                     <th>
-                      <ColumnHeaderFilter 
-                        title="Remark" 
-                        columnName="Remark" 
-                        allValues={getFilteredElekhaDataForColumn('Remark').map(d => String(d['Remark'] || '').trim())} 
-                        selectedFilters={elekhaColumnFilters['Remark']} 
-                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))} 
+                      <ColumnHeaderFilter
+                        title="Remark"
+                        columnName="Remark"
+                        allValues={getFilteredElekhaDataForColumn('Remark').map(d => String(d['Remark'] || '').trim())}
+                        selectedFilters={elekhaColumnFilters['Remark']}
+                        onChange={(col, val) => setElekhaColumnFilters(prev => ({ ...prev, [col]: val }))}
                       />
                     </th>
                   </tr>
@@ -4226,31 +5138,15 @@ export default function App() {
             {/* Pagination and Exports */}
             {filteredElekhaData.length > 0 && (
               <div className="pagination-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {/* Bottom Left Exports */}
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <button 
-                    onClick={handleExportElekhaCSV} 
-                    className="pg-btn" 
-                    style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', fontWeight: 600 }}
-                  >
-                    <Download size={14} /> Export to CSV
-                  </button>
-                  <button 
-                    onClick={handleExportElekhaExcel} 
-                    className="pg-btn" 
-                    style={{ backgroundColor: '#22c55e', color: 'white', border: 'none', fontWeight: 600 }}
-                  >
-                    <Download size={14} /> Export to Excel
-                  </button>
-                </div>
+<div></div>
 
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   <div className="pagination-info">
                     Showing <strong>{elekhaPage * elekhaRowsPerPage + 1}</strong> to <strong>{Math.min((elekhaPage + 1) * elekhaRowsPerPage, filteredElekhaData.length)}</strong> of <strong>{filteredElekhaData.length}</strong> records
                   </div>
-                  <select 
-                    className="custom-select" 
-                    value={elekhaRowsPerPage} 
+                  <select
+                    className="custom-select"
+                    value={elekhaRowsPerPage}
                     onChange={(e) => {
                       setElekhaRowsPerPage(parseInt(e.target.value, 10));
                       setElekhaPage(0);
@@ -4263,9 +5159,9 @@ export default function App() {
                   </select>
 
                   <div className="pagination-buttons" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <button 
-                      className="pg-btn" 
-                      disabled={elekhaPage === 0} 
+                    <button
+                      className="pg-btn"
+                      disabled={elekhaPage === 0}
                       onClick={() => setElekhaPage(prev => Math.max(prev - 1, 0))}
                     >
                       <ChevronLeft size={16} /> Prev
@@ -4273,10 +5169,10 @@ export default function App() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Page:</span>
-                      <input 
-                        type="text" 
-                        className="custom-input" 
-                        value={elekhaPageInput} 
+                      <input
+                        type="text"
+                        className="custom-input"
+                        value={elekhaPageInput}
                         onChange={(e) => {
                           const val = e.target.value.replace(/\D/g, ''); // only digits
                           setElekhaPageInput(val);
@@ -4303,9 +5199,9 @@ export default function App() {
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/ {Math.ceil(filteredElekhaData.length / elekhaRowsPerPage)}</span>
                     </div>
 
-                    <button 
-                      className="pg-btn" 
-                      disabled={(elekhaPage + 1) * elekhaRowsPerPage >= filteredElekhaData.length} 
+                    <button
+                      className="pg-btn"
+                      disabled={(elekhaPage + 1) * elekhaRowsPerPage >= filteredElekhaData.length}
                       onClick={() => setElekhaPage(prev => prev + 1)}
                     >
                       Next <ChevronRight size={16} />
@@ -4319,506 +5215,587 @@ export default function App() {
 
         {/* Tab 3: Rebuilt Vertical Revenue Report View (Horizontal Matrix Comparison Grid) */}
         {activeTab === 'revenue' && (
-          <>
-            {/* Filter Headers section */}
-            <div className="card-title-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <h2 style={{ fontSize: '1.4rem' }}>Vertical Revenue Report Matrix</h2>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
-                    Horizontal comparative revenue flow report grouped by Category and HOA across HO, Division, or Region columns
-                  </p>
-                </div>
+          IS_VERTICAL_REVENUE_UNDER_MAINTENANCE ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '5rem 2rem',
+              textAlign: 'center',
+              backgroundColor: 'rgba(201, 162, 39, 0.03)',
+              border: '1px dashed var(--border-color)',
+              borderRadius: 'var(--radius-lg)',
+              margin: '1.5rem 0'
+            }}>
+              <div style={{
+                width: '76px',
+                height: '76px',
+                borderRadius: '50%',
+                backgroundColor: 'rgba(217, 154, 61, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--color-warning)',
+                marginBottom: '1.25rem',
+                border: '1px solid rgba(217, 154, 61, 0.3)',
+                boxShadow: '0 0 24px rgba(217, 154, 61, 0.12)'
+              }}>
+                <Wrench size={38} />
               </div>
 
-              {/* Selector filters row */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Type</label>
-                  <select 
-                    className="custom-select" 
-                    value={revenueType} 
-                    onChange={(e) => setRevenueType(e.target.value)}
-                    style={{ minWidth: '100px' }}
-                  >
-                    <option value="Month">Month</option>
-                    <option value="Day">Day</option>
-                  </select>
-                </div>
+              <h2 style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '1.75rem',
+                color: 'var(--text-primary)',
+                marginBottom: '0.65rem'
+              }}>
+                Vertical Revenue Report
+              </h2>
 
-                {revenueType === 'Month' ? (
-                  <>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 1 From</label>
-                      <select className="custom-select" value={p1From} onChange={(e) => setP1From(e.target.value)}>
-                        {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
-                      <select className="custom-select" value={p1To} onChange={(e) => setP1To(e.target.value)}>
-                        {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                    </div>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 2 From</label>
-                      <select className="custom-select" value={p2From} onChange={(e) => setP2From(e.target.value)}>
-                        {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
-                      <select className="custom-select" value={p2To} onChange={(e) => setP2To(e.target.value)}>
-                        {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {/* Day date range selectors */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 1 From</label>
-                      <input type="date" className="mini-input" value={p1FromDate} onChange={(e) => setP1FromDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
-                      <input type="date" className="mini-input" value={p1ToDate} onChange={(e) => setP1ToDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 2 From</label>
-                      <input type="date" className="mini-input" value={p2FromDate} onChange={(e) => setP2FromDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
-                      <input type="date" className="mini-input" value={p2ToDate} onChange={(e) => setP2ToDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
-                    </div>
-                  </>
-                )}
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Report Type</label>
-                  <select 
-                    className="custom-select" 
-                    value={reportType} 
-                    onChange={(e) => setReportType(e.target.value)}
-                    style={{ minWidth: '100px' }}
-                  >
-                    <option value="Detail">Detail</option>
-                    <option value="Summary">Summary</option>
-                  </select>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Group by</label>
-                  <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', height: '37px' }}>
-                    <button 
-                      onClick={() => setGroupBy('ho')}
-                      style={{ 
-                        border: 'none', 
-                        padding: '0 0.75rem', 
-                        fontSize: '0.8rem', 
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        backgroundColor: groupBy === 'ho' ? 'var(--color-primary)' : 'var(--bg-input)',
-                        color: groupBy === 'ho' ? '#14210f' : 'var(--text-secondary)'
-                      }}
-                    >
-                      HO-wise
-                    </button>
-                    <button 
-                      onClick={() => setGroupBy('division')}
-                      style={{ 
-                        border: 'none', 
-                        padding: '0 0.75rem', 
-                        fontSize: '0.8rem', 
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        backgroundColor: groupBy === 'division' ? 'var(--color-primary)' : 'var(--bg-input)',
-                        color: groupBy === 'division' ? '#14210f' : 'var(--text-secondary)'
-                      }}
-                    >
-                      Division-wise
-                    </button>
-                    <button 
-                      onClick={() => setGroupBy('region')}
-                      style={{ 
-                        border: 'none', 
-                        padding: '0 0.75rem', 
-                        fontSize: '0.8rem', 
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        backgroundColor: groupBy === 'region' ? 'var(--color-primary)' : 'var(--bg-input)',
-                        color: groupBy === 'region' ? '#14210f' : 'var(--text-secondary)'
-                      }}
-                    >
-                      Region-wise
-                    </button>
-                  </div>
-                </div>
-
-                <button 
-                  className="pg-btn" 
-                  onClick={handleGenerate} 
-                  style={{ 
-                    alignSelf: 'flex-end', 
-                    height: '37px', 
-                    padding: '0 1.5rem', 
-                    backgroundColor: 'var(--color-primary)', 
-                    color: '#14210f',
-                    fontWeight: 'bold',
-                    border: 'none'
-                  }}
-                >
-                  Generate
-                </button>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 18px',
+                backgroundColor: 'rgba(217, 154, 61, 0.15)',
+                color: 'var(--color-warning)',
+                borderRadius: '50px',
+                fontWeight: 700,
+                fontSize: '1.05rem',
+                letterSpacing: '0.3px',
+                marginBottom: '1rem',
+                border: '1px solid rgba(217, 154, 61, 0.3)'
+              }}>
+                <AlertTriangle size={20} />
+                This is under maintenance
               </div>
+
+              <p style={{
+                color: 'var(--text-secondary)',
+                fontSize: '0.95rem',
+                maxWidth: '540px',
+                lineHeight: '1.6'
+              }}>
+                The Vertical Revenue module is currently undergoing scheduled maintenance. Please check back later.
+              </p>
             </div>
-
-            {/* Generated Comparative Table section */}
-            {!verticalRevenueReportData ? (
-              <div className="empty-state" style={{ padding: '3rem 0' }}>
-                <AlertCircle />
-                <p>Click the <strong>Generate</strong> button to render the vertical revenue matrix comparison.</p>
-              </div>
-            ) : (
-              <>
-                {/* Vertical Revenue KPIs Summary Bar */}
-                {revenueKpis && (
-                  <div 
-                    className="budget-summary-bar" 
-                    style={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
-                      gap: '0.75rem', 
-                      marginBottom: '1.5rem' 
-                    }}
-                  >
-                    {['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'PLI', 'RPLI', 'Gross'].map(cat => {
-                      const data = revenueKpis[cat] || { p1: 0, p2: 0 };
-                      const label = translateCategoryVal(cat);
-                      const isGross = cat === 'Gross';
-                      
-                      return (
-                        <div 
-                          key={cat} 
-                          className="budget-summary-card"
-                          style={{
-                            padding: '0.75rem',
-                            border: isGross ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
-                            backgroundColor: isGross ? 'rgba(14, 165, 233, 0.05)' : 'var(--bg-card)',
-                            boxShadow: 'var(--shadow-sm)'
-                          }}
-                        >
-                          <h5 style={{ fontSize: '0.75rem', margin: '0 0 6px 0', textTransform: 'uppercase', color: isGross ? 'var(--color-primary)' : 'var(--text-secondary)' }}>
-                            {label}
-                          </h5>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between' }}>
-                              <span>{getPeriodLabel(1)}:</span>
-                              <span>{formatINR(data.p1)}</span>
-                            </div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                              <span>{getPeriodLabel(2)}:</span>
-                              <span>{formatINR(data.p2)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+          ) : (
+            <>
+              {/* Filter Headers section */}
+              <div className="card-title-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1.4rem' }}>Vertical Revenue Report Matrix</h2>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                      Horizontal comparative revenue flow report grouped by Category and HOA across HO, Division, or Region columns
+                    </p>
                   </div>
-                )}
+                </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '1.25rem 0', flexWrap: 'wrap', gap: '1rem' }}>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    Displaying Period comparison: <strong>Period 1</strong> vs <strong>Period 2</strong> (Grouped by {generatedConfig.groupBy === 'ho' ? 'HO' : generatedConfig.groupBy === 'division' ? 'Division' : 'Region'})
+                {/* Selector filters row */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Type</label>
+                    <select
+                      className="custom-select"
+                      value={revenueType}
+                      onChange={(e) => setRevenueType(e.target.value)}
+                      style={{ minWidth: '100px' }}
+                    >
+                      <option value="Month">Month</option>
+                      <option value="Day">Day</option>
+                    </select>
                   </div>
-                  
+
+                  {revenueType === 'Month' ? (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 1 From</label>
+                        <select className="custom-select" value={p1From} onChange={(e) => setP1From(e.target.value)}>
+                          {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
+                        <select className="custom-select" value={p1To} onChange={(e) => setP1To(e.target.value)}>
+                          {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 2 From</label>
+                        <select className="custom-select" value={p2From} onChange={(e) => setP2From(e.target.value)}>
+                          {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
+                        <select className="custom-select" value={p2To} onChange={(e) => setP2To(e.target.value)}>
+                          {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Day date range selectors */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 1 From</label>
+                        <input type="date" className="mini-input" value={p1FromDate} onChange={(e) => setP1FromDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
+                        <input type="date" className="mini-input" value={p1ToDate} onChange={(e) => setP1ToDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Period 2 From</label>
+                        <input type="date" className="mini-input" value={p2FromDate} onChange={(e) => setP2FromDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
+                        <input type="date" className="mini-input" value={p2ToDate} onChange={(e) => setP2ToDate(e.target.value)} style={{ padding: '0.55rem', height: '37px' }} />
+                      </div>
+                    </>
+                  )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Report Type</label>
+                    <select
+                      className="custom-select"
+                      value={reportType}
+                      onChange={(e) => setReportType(e.target.value)}
+                      style={{ minWidth: '100px' }}
+                    >
+                      <option value="Detail">Detail</option>
+                      <option value="Summary">Summary</option>
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Group by</label>
+                    <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', height: '37px' }}>
+                      <button
+                        onClick={() => setGroupBy('ho')}
+                        style={{
+                          border: 'none',
+                          padding: '0 0.75rem',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          backgroundColor: groupBy === 'ho' ? 'var(--color-primary)' : 'var(--bg-input)',
+                          color: groupBy === 'ho' ? '#14210f' : 'var(--text-secondary)'
+                        }}
+                      >
+                        HO-wise
+                      </button>
+                      <button
+                        onClick={() => setGroupBy('division')}
+                        style={{
+                          border: 'none',
+                          padding: '0 0.75rem',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          backgroundColor: groupBy === 'division' ? 'var(--color-primary)' : 'var(--bg-input)',
+                          color: groupBy === 'division' ? '#14210f' : 'var(--text-secondary)'
+                        }}
+                      >
+                        Division-wise
+                      </button>
+                      <button
+                        onClick={() => setGroupBy('region')}
+                        style={{
+                          border: 'none',
+                          padding: '0 0.75rem',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          backgroundColor: groupBy === 'region' ? 'var(--color-primary)' : 'var(--bg-input)',
+                          color: groupBy === 'region' ? '#14210f' : 'var(--text-secondary)'
+                        }}
+                      >
+                        Region-wise
+                      </button>
+                    </div>
+                  </div>
+
                   <button
-                    type="button"
-                    className={`pg-btn ${isRevenueChartMode ? 'active' : ''}`}
-                    onClick={() => setIsRevenueChartMode(!isRevenueChartMode)}
+                    className="pg-btn"
+                    onClick={handleGenerate}
                     style={{
-                      height: '32px',
-                      padding: '0 12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
+                      alignSelf: 'flex-end',
+                      height: '37px',
+                      padding: '0 1.5rem',
+                      backgroundColor: 'var(--color-primary)',
+                      color: '#14210f',
                       fontWeight: 'bold',
-                      backgroundColor: isRevenueChartMode ? 'var(--color-primary)' : 'var(--bg-input)',
-                      color: isRevenueChartMode ? '#14210f' : 'var(--text-secondary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-sm)'
+                      border: 'none'
                     }}
                   >
-                    <BarChart2 size={14} /> Chart Options
+                    Generate
                   </button>
                 </div>
+              </div>
 
-                {/* Revenue Chart Collapsible Panel */}
-                {isRevenueChartMode && revenueChartData.length > 0 && (
-                  <div 
-                    className="chart-panel" 
-                    style={{
-                      backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '1.5rem',
-                      marginBottom: '1.5rem'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
-                      <div>
-                        <h4 style={{ margin: 0, color: 'var(--text-primary)' }}>Vertical Revenue Category Comparison</h4>
-                        <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                          Comparing total receipts of Period 1 (P1) vs Period 2 (P2) across categories.
-                        </p>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        {['bar', 'line', 'pie'].map(t => (
-                          <button
-                            key={t}
-                            onClick={() => setSelectedRevenueChartType(t)}
-                            className={`pg-btn ${selectedRevenueChartType === t ? 'active' : ''}`}
-                            style={{
-                              height: '30px',
-                              padding: '0 12px',
-                              fontSize: '0.8rem',
-                              backgroundColor: selectedRevenueChartType === t ? 'var(--color-primary)' : 'var(--bg-input)'
-                            }}
-                          >
-                            {t.toUpperCase()} CHART
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {selectedRevenueChartType === 'pie' ? (
-                      <SVGPieChart 
-                        data={revenueChartData} 
-                        colors={['#c9a227', '#1f6f5c', '#a97e1f', '#4c7ea8', '#8a6d2f', '#2f9e6b', '#b08d3e']} 
-                      />
-                    ) : selectedRevenueChartType === 'bar' ? (
-                      <SVGBarChart 
-                        data={revenueChartData} 
-                        colors={['#c9a227', '#1f6f5c']} 
-                      />
-                    ) : (
-                      <SVGLineChart 
-                        data={revenueChartData} 
-                        colors={['#c9a227', '#1f6f5c']} 
-                      />
-                    )}
-
-                    {selectedRevenueChartType !== 'pie' && (
-                      <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '15px', fontSize: '0.85rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#c9a227', borderRadius: '2px' }}></span>
-                          <span>{getPeriodLabel(1)}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#1f6f5c', borderRadius: '2px' }}></span>
-                          <span>{getPeriodLabel(2)}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="table-wrapper top-scrollbar">
-                  <table className="premium-table">
-                    <thead>
-                      <tr>
-                        <th rowSpan={2} style={{ verticalAlign: 'middle', borderBottomWidth: '2px' }}>
-                          <ColumnHeaderFilter 
-                            title="Category" 
-                            columnName="Category" 
-                            allValues={hoaList.map(d => d.Category)} 
-                            selectedFilters={revenueColumnFilters['Category']} 
-                            onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th rowSpan={2} style={{ verticalAlign: 'middle', borderBottomWidth: '2px' }}>
-                          <ColumnHeaderFilter 
-                            title="HOA" 
-                            columnName="HOA" 
-                            allValues={hoaList.map(d => String(d['HOA Code'] || '').trim())} 
-                            selectedFilters={revenueColumnFilters['HOA']} 
-                            onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        <th rowSpan={2} style={{ verticalAlign: 'middle', borderBottomWidth: '2px' }}>
-                          <ColumnHeaderFilter 
-                            title="Description" 
-                            columnName="Description" 
-                            allValues={hoaList.map(d => String(d.Description || '').trim())} 
-                            selectedFilters={revenueColumnFilters['Description']} 
-                            onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                          />
-                        </th>
-                        
-                        {/* Level 1: Office Column groups */}
-                        {verticalRevenueReportData.uniqueUnits.map((u, uIdx) => (
-                          <th key={uIdx} colSpan={2} className="text-center" style={{ borderBottom: '1px solid var(--border-color)', borderLeft: '1px solid var(--border-color)' }}>
-                            <ColumnHeaderFilter 
-                              title={u.label} 
-                              columnName="Unit" 
-                              allValues={verticalRevenueReportData.allRawUnits} 
-                              selectedFilters={revenueColumnFilters['Unit']} 
-                              onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))} 
-                            />
-                          </th>
-                        ))}
-
-                        {/* Gross Total Column Header */}
-                        <th colSpan={2} className="text-center" style={{ borderBottom: '1px solid var(--border-color)', borderLeft: '2px solid var(--border-color)', fontWeight: 'bold' }}>
-                          Gross Total
-                        </th>
-                      </tr>
-                      <tr>
-                        {/* Level 2: Period sub-columns */}
-                        {verticalRevenueReportData.uniqueUnits.map((u, uIdx) => (
-                          <React.Fragment key={uIdx}>
-                            <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderLeft: '1px solid var(--border-color)', borderBottomWidth: '2px' }}>
-                              {getPeriodLabel(1)}
-                            </th>
-                            <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderBottomWidth: '2px' }}>
-                              {getPeriodLabel(2)}
-                            </th>
-                          </React.Fragment>
-                        ))}
-                        {/* Gross Total Period sub-headers */}
-                        <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderLeft: '2px solid var(--border-color)', borderBottomWidth: '2px', fontWeight: 'bold' }}>
-                          {getPeriodLabel(1)}
-                        </th>
-                        <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderBottomWidth: '2px', fontWeight: 'bold' }}>
-                          {getPeriodLabel(2)}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {verticalRevenueReportData.categoriesOrder.map(cat => {
-                        const hoas = verticalRevenueReportData.groupedHoas[cat] || [];
-                        const clsRow = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}`;
-                        const clsTotal = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}-total`;
+              {/* Generated Comparative Table section */}
+              {!verticalRevenueReportData ? (
+                <div className="empty-state" style={{ padding: '3rem 0' }}>
+                  <AlertCircle />
+                  <p>Click the <strong>Generate</strong> button to render the vertical revenue matrix comparison.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Vertical Revenue KPIs Summary Bar */}
+                  {revenueKpis && (
+                    <div
+                      className="budget-summary-bar revenue-kpi-grid"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                        gap: '0.85rem',
+                        marginBottom: '1.5rem'
+                      }}
+                    >
+                      {['CCS', 'FS', 'IRGB', 'MO', 'Parcel', 'PLI', 'RPLI', 'Gross'].map(cat => {
+                        const data = revenueKpis[cat] || { p1: 0, p2: 0 };
+                        const label = translateCategoryVal(cat);
+                        const isGross = cat === 'Gross';
 
                         return (
-                          <React.Fragment key={cat}>
-                            {/* Render detail HOA rows under this category (if detail is selected) */}
-                            {generatedConfig.reportType === 'Detail' && hoas.map(hoa => {
-                              const hoaCode = String(hoa['HOA Code'] || '').trim();
-                              return (
-                                <tr key={hoaCode} className={clsRow}>
-                                  <td style={{ fontWeight: 500 }}>{translateCategoryVal(cat)}</td>
-                                  <td><code>{hoaCode}</code></td>
-                                  <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hoa.Description}>
-                                    {hoa.Description}
-                                  </td>
-                                  {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
-                                    const val1 = verticalRevenueReportData.p1Totals[`${hoaCode}_${g.name}`] || 0;
-                                    const val2 = verticalRevenueReportData.p2Totals[`${hoaCode}_${g.name}`] || 0;
-                                    return (
-                                      <React.Fragment key={gIdx}>
-                                        <td className="text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>{formatTableValue(val1)}</td>
-                                        <td className="text-right">{formatTableValue(val2)}</td>
-                                      </React.Fragment>
-                                    );
-                                  })}
-                                  {/* Gross Total cells per row */}
-                                  <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)', fontWeight: 600 }}>
-                                    {formatTableValue(verticalRevenueReportData.rowP1Gross[hoaCode] || 0)}
-                                  </td>
-                                  <td className="text-right" style={{ fontWeight: 600 }}>
-                                    {formatTableValue(verticalRevenueReportData.rowP2Gross[hoaCode] || 0)}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-
-                            {/* Subtotal row for Category */}
-                            <tr className={clsTotal}>
-                              <td style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{translateCategoryVal(cat)} Total</td>
-                              <td></td>
-                              <td></td>
-                              {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
-                                const catVal1 = verticalRevenueReportData.p1CatTotals[`${cat}_${g.name}`] || 0;
-                                const catVal2 = verticalRevenueReportData.p2CatTotals[`${cat}_${g.name}`] || 0;
-                                return (
-                                  <React.Fragment key={gIdx}>
-                                    <td className="text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>{formatTableValue(catVal1)}</td>
-                                    <td className="text-right">{formatTableValue(catVal2)}</td>
-                                  </React.Fragment>
-                                );
-                              })}
-                              {/* Category Gross Total cells */}
-                              <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)', fontWeight: 'bold' }}>
-                                {formatTableValue(verticalRevenueReportData.catP1Gross[cat] || 0)}
-                              </td>
-                              <td className="text-right" style={{ fontWeight: 'bold' }}>
-                                {formatTableValue(verticalRevenueReportData.catP2Gross[cat] || 0)}
-                              </td>
-                            </tr>
-                          </React.Fragment>
+                          <div
+                            key={cat}
+                            className="budget-summary-card"
+                            style={{
+                              padding: '1.1rem 1.35rem',
+                              border: isGross ? '2px solid var(--color-primary)' : '1px solid var(--border-color)',
+                              backgroundColor: isGross ? 'rgba(14, 165, 233, 0.08)' : 'var(--bg-card)',
+                              boxShadow: 'var(--shadow-sm)',
+                              borderRadius: 'var(--radius-md)'
+                            }}
+                          >
+                            <h5 style={{ fontSize: '1.05rem', margin: '0 0 10px 0', textTransform: 'uppercase', fontWeight: 800, color: isGross ? 'var(--color-primary)' : 'rgba(255, 255, 255, 0.95)', letterSpacing: '0.5px' }}>
+                              {label}
+                            </h5>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{getPeriodLabel(1)}:</span>
+                                <span>{formatINR(data.p1)}</span>
+                              </div>
+                              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: isGross ? 'var(--color-primary)' : '#4ade80', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{getPeriodLabel(2)}:</span>
+                                <span>{formatINR(data.p2)}</span>
+                              </div>
+                            </div>
+                          </div>
                         );
                       })}
+                    </div>
+                  )}
 
-                      {/* Bottom Gross Total Row */}
-                      <tr className="rev-row-grand-total">
-                        <td style={{ fontWeight: 800 }}>GROSS TOTAL</td>
-                        <td></td>
-                        <td></td>
-                        {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
-                          const uVal1 = verticalRevenueReportData.unitP1Gross[g.name] || 0;
-                          const uVal2 = verticalRevenueReportData.unitP2Gross[g.name] || 0;
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '1.25rem 0', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      Displaying Period comparison: <strong>Period 1</strong> vs <strong>Period 2</strong> (Grouped by {generatedConfig.groupBy === 'ho' ? 'HO' : generatedConfig.groupBy === 'division' ? 'Division' : 'Region'})
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <button
+                        type="button"
+                        className={`pg-btn ${isRevenueChartMode ? 'active' : ''}`}
+                        onClick={() => setIsRevenueChartMode(!isRevenueChartMode)}
+                        style={{
+                          height: '36px',
+                          padding: '0 14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontWeight: 'bold',
+                          backgroundColor: isRevenueChartMode ? 'var(--color-primary)' : 'var(--bg-input)',
+                          color: isRevenueChartMode ? '#14210f' : 'var(--text-secondary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 'var(--radius-sm)'
+                        }}
+                      >
+                        <BarChart2 size={14} /> Chart Options
+                      </button>
+
+                      <div className="export-dropdown" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="export-trigger"
+                          onClick={() => setRevenueExportMenuOpen(o => !o)}
+                          disabled={!verticalRevenueReportData}
+                          style={{ height: '36px', padding: '0 14px', fontSize: '0.85rem' }}
+                        >
+                          <Download size={14} /> Export
+                          <ChevronDown size={14} className={`chev ${revenueExportMenuOpen ? 'open' : ''}`} />
+                        </button>
+                        {revenueExportMenuOpen && (
+                          <div className="export-menu" role="menu">
+                            <button type="button" role="menuitem" className="export-item pdf" onClick={() => { handleExportRevenuePDF(); setRevenueExportMenuOpen(false); }}>
+                              <FileDown size={16} /> Export to PDF
+                            </button>
+                            <button type="button" role="menuitem" className="export-item excel" onClick={() => { handleExportExcel(); setRevenueExportMenuOpen(false); }}>
+                              <FileSpreadsheet size={16} /> Export to Excel
+                            </button>
+                            <button type="button" role="menuitem" className="export-item csv" onClick={() => { handleExportCSV(); setRevenueExportMenuOpen(false); }}>
+                              <FileText size={16} /> Export to CSV
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Revenue Chart Collapsible Panel */}
+                  {isRevenueChartMode && revenueChartData.length > 0 && (
+                    <div
+                      className="chart-panel"
+                      style={{
+                        backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '1.5rem',
+                        marginBottom: '1.5rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                        <div>
+                          <h4 style={{ margin: 0, color: 'var(--text-primary)' }}>Vertical Revenue Category Comparison</h4>
+                          <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            Comparing total receipts of Period 1 (P1) vs Period 2 (P2) across categories.
+                          </p>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          {['bar', 'line', 'pie'].map(t => (
+                            <button
+                              key={t}
+                              onClick={() => setSelectedRevenueChartType(t)}
+                              className={`pg-btn ${selectedRevenueChartType === t ? 'active' : ''}`}
+                              style={{
+                                height: '30px',
+                                padding: '0 12px',
+                                fontSize: '0.8rem',
+                                backgroundColor: selectedRevenueChartType === t ? 'var(--color-primary)' : 'var(--bg-input)'
+                              }}
+                            >
+                              {t.toUpperCase()} CHART
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {selectedRevenueChartType === 'pie' ? (
+                        <SVGPieChart
+                          data={revenueChartData}
+                          colors={['#c9a227', '#1f6f5c', '#a97e1f', '#4c7ea8', '#8a6d2f', '#2f9e6b', '#b08d3e']}
+                        />
+                      ) : selectedRevenueChartType === 'bar' ? (
+                        <SVGBarChart
+                          data={revenueChartData}
+                          colors={['#c9a227', '#1f6f5c']}
+                        />
+                      ) : (
+                        <SVGLineChart
+                          data={revenueChartData}
+                          colors={['#c9a227', '#1f6f5c']}
+                        />
+                      )}
+
+                      {selectedRevenueChartType !== 'pie' && (
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '15px', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#c9a227', borderRadius: '2px' }}></span>
+                            <span>{getPeriodLabel(1)}</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#1f6f5c', borderRadius: '2px' }}></span>
+                            <span>{getPeriodLabel(2)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <TopScrollbar targetRef={revenueTableWrapperRef} />
+                  <div ref={revenueTableWrapperRef} className="table-wrapper top-scrollbar" style={{ maxHeight: '144vh', overflowY: 'auto', overflowX: 'auto', position: 'relative' }}>
+                    <table className="premium-table">
+                      <thead>
+                        <tr>
+                          <th rowSpan={2} style={{ verticalAlign: 'middle', borderBottomWidth: '2px' }}>
+                            <ColumnHeaderFilter
+                              title="Category"
+                              columnName="Category"
+                              allValues={hoaList.map(d => d.Category)}
+                              selectedFilters={revenueColumnFilters['Category']}
+                              onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))}
+                            />
+                          </th>
+                          <th rowSpan={2} style={{ verticalAlign: 'middle', borderBottomWidth: '2px' }}>
+                            <ColumnHeaderFilter
+                              title="HOA"
+                              columnName="HOA"
+                              allValues={hoaList.map(d => String(d['HOA Code'] || '').trim())}
+                              selectedFilters={revenueColumnFilters['HOA']}
+                              onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))}
+                            />
+                          </th>
+                          <th rowSpan={2} style={{ verticalAlign: 'middle', borderBottomWidth: '2px' }}>
+                            <ColumnHeaderFilter
+                              title="Description"
+                              columnName="Description"
+                              allValues={hoaList.map(d => String(d.Description || '').trim())}
+                              selectedFilters={revenueColumnFilters['Description']}
+                              onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))}
+                            />
+                          </th>
+
+                          {/* Level 1: Office Column groups */}
+                          {verticalRevenueReportData.uniqueUnits.map((u, uIdx) => (
+                            <th key={uIdx} colSpan={2} className="text-center" style={{ borderBottom: '1px solid var(--border-color)', borderLeft: '1px solid var(--border-color)' }}>
+                              <ColumnHeaderFilter
+                                title={u.label}
+                                columnName="Unit"
+                                allValues={verticalRevenueReportData.allRawUnits}
+                                selectedFilters={revenueColumnFilters['Unit']}
+                                onChange={(col, val) => setRevenueColumnFilters(prev => ({ ...prev, [col]: val }))}
+                              />
+                            </th>
+                          ))}
+
+                          {/* Gross Total Column Header */}
+                          <th colSpan={2} className="text-center" style={{ borderBottom: '1px solid var(--border-color)', borderLeft: '2px solid var(--border-color)', fontWeight: 'bold' }}>
+                            Gross Total
+                          </th>
+                        </tr>
+                        <tr>
+                          {/* Level 2: Period sub-columns */}
+                          {verticalRevenueReportData.uniqueUnits.map((u, uIdx) => (
+                            <React.Fragment key={uIdx}>
+                              <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderLeft: '1px solid var(--border-color)', borderBottomWidth: '2px' }}>
+                                {getPeriodLabel(1)}
+                              </th>
+                              <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderBottomWidth: '2px' }}>
+                                {getPeriodLabel(2)}
+                              </th>
+                            </React.Fragment>
+                          ))}
+                          {/* Gross Total Period sub-headers */}
+                          <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderLeft: '2px solid var(--border-color)', borderBottomWidth: '2px', fontWeight: 'bold' }}>
+                            {getPeriodLabel(1)}
+                          </th>
+                          <th className="text-center" style={{ fontSize: '0.75rem', padding: '0.5rem', borderBottomWidth: '2px', fontWeight: 'bold' }}>
+                            {getPeriodLabel(2)}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {verticalRevenueReportData.categoriesOrder.map(cat => {
+                          const hoas = verticalRevenueReportData.groupedHoas[cat] || [];
+                          const clsRow = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}`;
+                          const clsTotal = `rev-row-${cat.toLowerCase().replace(/\s+/g, '-')}-total`;
+
                           return (
-                            <React.Fragment key={gIdx}>
-                              <td className="text-right" style={{ borderLeft: '1px solid var(--border-color)' }}>{formatTableValue(uVal1)}</td>
-                              <td className="text-right">{formatTableValue(uVal2)}</td>
+                            <React.Fragment key={cat}>
+                              {/* Render detail HOA rows under this category (if detail is selected) */}
+                              {generatedConfig.reportType === 'Detail' && hoas.map(hoa => {
+                                const hoaCode = String(hoa['HOA Code'] || '').trim();
+                                return (
+                                  <tr key={hoaCode} className={clsRow}>
+                                    <td style={{ fontWeight: 500 }}>{translateCategoryVal(cat)}</td>
+                                    <td><code>{hoaCode}</code></td>
+                                    <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hoa.Description}>
+                                      {hoa.Description}
+                                    </td>
+                                    {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
+                                      const val1 = verticalRevenueReportData.p1Totals[`${hoaCode}_${g.name}`] || 0;
+                                      const val2 = verticalRevenueReportData.p2Totals[`${hoaCode}_${g.name}`] || 0;
+                                      return (
+                                        <React.Fragment key={gIdx}>
+                                          <td className="text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>{formatTableValue(val1)}</td>
+                                          <td className="text-right">{formatTableValue(val2)}</td>
+                                        </React.Fragment>
+                                      );
+                                    })}
+                                    {/* Gross Total cells per row */}
+                                    <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)', fontWeight: 600 }}>
+                                      {formatTableValue(verticalRevenueReportData.rowP1Gross[hoaCode] || 0)}
+                                    </td>
+                                    <td className="text-right" style={{ fontWeight: 600 }}>
+                                      {formatTableValue(verticalRevenueReportData.rowP2Gross[hoaCode] || 0)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+
+                              {/* Subtotal row for Category */}
+                              <tr className={clsTotal}>
+                                <td style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{translateCategoryVal(cat)} Total</td>
+                                <td></td>
+                                <td></td>
+                                {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
+                                  const catVal1 = verticalRevenueReportData.p1CatTotals[`${cat}_${g.name}`] || 0;
+                                  const catVal2 = verticalRevenueReportData.p2CatTotals[`${cat}_${g.name}`] || 0;
+                                  return (
+                                    <React.Fragment key={gIdx}>
+                                      <td className="text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>{formatTableValue(catVal1)}</td>
+                                      <td className="text-right">{formatTableValue(catVal2)}</td>
+                                    </React.Fragment>
+                                  );
+                                })}
+                                {/* Category Gross Total cells */}
+                                <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)', fontWeight: 'bold' }}>
+                                  {formatTableValue(verticalRevenueReportData.catP1Gross[cat] || 0)}
+                                </td>
+                                <td className="text-right" style={{ fontWeight: 'bold' }}>
+                                  {formatTableValue(verticalRevenueReportData.catP2Gross[cat] || 0)}
+                                </td>
+                              </tr>
                             </React.Fragment>
                           );
                         })}
-                        {/* Grand Total cells */}
-                        <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)' }}>
-                          {formatTableValue(verticalRevenueReportData.grandP1Gross)}
-                        </td>
-                        <td className="text-right">
-                          {formatTableValue(verticalRevenueReportData.grandP2Gross)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
 
-                {/* Bottom Bar Controls (Export options left, Stats right) */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
-                  {/* Bottom Left Exports */}
-                  <div style={{ display: 'flex', gap: '0.75rem' }}>
-                    <button 
-                      onClick={handleExportCSV} 
-                      className="pg-btn" 
-                      style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', fontWeight: 600 }}
-                    >
-                      <Download size={14} /> Export to CSV
-                    </button>
-                    <button 
-                      onClick={handleExportExcel} 
-                      className="pg-btn" 
-                      style={{ backgroundColor: '#22c55e', color: 'white', border: 'none', fontWeight: 600 }}
-                    >
-                      <Download size={14} /> Export to Excel
-                    </button>
+                        {/* Bottom Gross Total Row */}
+                        <tr className="rev-row-grand-total">
+                          <td style={{ fontWeight: 800 }}>GROSS TOTAL</td>
+                          <td></td>
+                          <td></td>
+                          {verticalRevenueReportData.uniqueUnits.map((g, gIdx) => {
+                            const uVal1 = verticalRevenueReportData.unitP1Gross[g.name] || 0;
+                            const uVal2 = verticalRevenueReportData.unitP2Gross[g.name] || 0;
+                            return (
+                              <React.Fragment key={gIdx}>
+                                <td className="text-right" style={{ borderLeft: '1px solid var(--border-color)' }}>{formatTableValue(uVal1)}</td>
+                                <td className="text-right">{formatTableValue(uVal2)}</td>
+                              </React.Fragment>
+                            );
+                          })}
+                          {/* Grand Total cells */}
+                          <td className="text-right" style={{ borderLeft: '2px solid var(--border-color)' }}>
+                            {formatTableValue(verticalRevenueReportData.grandP1Gross)}
+                          </td>
+                          <td className="text-right">
+                            {formatTableValue(verticalRevenueReportData.grandP2Gross)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
 
-                  {/* Bottom Right Stats */}
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', letterSpacing: '0.5px', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                    ROWS: <strong>{datasetStats.rows.toLocaleString()}</strong> | HOAs: <strong>{datasetStats.hoas}</strong> | HOs: <strong>{datasetStats.hos}</strong> | Divisions: <strong>{datasetStats.divisions}</strong> | Regions: <strong>{datasetStats.regions}</strong>
+                  {/* Bottom Bar Controls (Export options left, Stats right) */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
+<div></div>
+
+                    {/* Bottom Right Stats */}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', letterSpacing: '0.5px', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                      ROWS: <strong>{datasetStats.rows.toLocaleString()}</strong> | HOAs: <strong>{datasetStats.hoas}</strong> | HOs: <strong>{datasetStats.hos}</strong> | Divisions: <strong>{datasetStats.divisions}</strong> | Regions: <strong>{datasetStats.regions}</strong>
+                    </div>
                   </div>
-                </div>
-              </>
-            )}
-          </>
+                </>
+              )}
+            </>
+          )
         )}
 
         {/* Tab 4: User Management View (SA only) */}
@@ -4831,7 +5808,7 @@ export default function App() {
                   Create, edit, reset passwords, and delete user credentials.
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => {
                   resetUserManagementForm();
                   setShowUserModal(true);
@@ -4918,7 +5895,7 @@ export default function App() {
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                            <button 
+                            <button
                               onClick={() => handleEditClick(u)}
                               className="pg-btn"
                               style={{
@@ -4935,7 +5912,7 @@ export default function App() {
                             >
                               <Edit size={12} /> Edit
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleResetUserPassword(u.user_id)}
                               className="pg-btn"
                               style={{
@@ -4952,7 +5929,7 @@ export default function App() {
                             >
                               <RefreshCw size={12} /> Reset Pass
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleDeleteUser(u.user_id)}
                               className="pg-btn"
                               style={{
@@ -5010,9 +5987,9 @@ export default function App() {
                   <form onSubmit={handleCreateOrUpdateUser} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                       <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>User ID (8-digit)</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. 10032853" 
+                      <input
+                        type="text"
+                        placeholder="e.g. 10032853"
                         className="custom-input"
                         value={manageUserId}
                         onChange={(e) => setManageUserId(e.target.value.replace(/\D/g, '').substring(0, 8))}
@@ -5023,9 +6000,9 @@ export default function App() {
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                       <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Name</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. GORVADIYA" 
+                      <input
+                        type="text"
+                        placeholder="e.g. GORVADIYA"
                         className="custom-input"
                         value={manageName}
                         onChange={(e) => setManageName(e.target.value)}
@@ -5035,9 +6012,9 @@ export default function App() {
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                       <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Mobile No. (10-digit)</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. 9033201981" 
+                      <input
+                        type="text"
+                        placeholder="e.g. 9033201981"
                         className="custom-input"
                         value={manageMobileNo}
                         onChange={(e) => setManageMobileNo(e.target.value.replace(/\D/g, '').substring(0, 10))}
@@ -5051,24 +6028,24 @@ export default function App() {
                       </label>
                       <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', padding: '10px', backgroundColor: 'var(--bg-input)' }}>
                         <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                          <input 
-                            type="text" 
-                            placeholder="Search offices..." 
+                          <input
+                            type="text"
+                            placeholder="Search offices..."
                             value={officeSearchQuery}
                             onChange={(e) => setOfficeSearchQuery(e.target.value)}
                             className="custom-input"
                             style={{ height: '32px', fontSize: '0.8rem', flex: 1, padding: '0 8px', boxSizing: 'border-box' }}
                           />
-                          <button 
-                            type="button" 
+                          <button
+                            type="button"
                             onClick={() => setManageOffices(officeMapping.map(o => String(o['Office ID'])))}
                             className="pg-btn"
                             style={{ padding: '0 8px', fontSize: '0.75rem', height: '32px', cursor: 'pointer' }}
                           >
                             Select All
                           </button>
-                          <button 
-                            type="button" 
+                          <button
+                            type="button"
                             onClick={() => setManageOffices([])}
                             className="pg-btn"
                             style={{ padding: '0 8px', fontSize: '0.75rem', height: '32px', cursor: 'pointer' }}
@@ -5081,7 +6058,7 @@ export default function App() {
                             .filter(o => {
                               const search = officeSearchQuery.toLowerCase();
                               return (
-                                String(o['Office ID']).includes(search) || 
+                                String(o['Office ID']).includes(search) ||
                                 String(o['Office Name']).toLowerCase().includes(search)
                               );
                             })
@@ -5090,8 +6067,8 @@ export default function App() {
                               const isChecked = manageOffices.includes(oId);
                               return (
                                 <label key={oId} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-primary)' }}>
-                                  <input 
-                                    type="checkbox" 
+                                  <input
+                                    type="checkbox"
                                     checked={isChecked}
                                     onChange={(e) => {
                                       if (e.target.checked) {
@@ -5125,8 +6102,8 @@ export default function App() {
                           const isChecked = manageRights.includes(r.key);
                           return (
                             <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-primary)' }}>
-                              <input 
-                                type="checkbox" 
+                              <input
+                                type="checkbox"
                                 checked={isChecked}
                                 onChange={(e) => {
                                   if (e.target.checked) {
@@ -5145,8 +6122,8 @@ export default function App() {
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                       <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>User Type</label>
-                      <select 
-                        className="custom-select" 
+                      <select
+                        className="custom-select"
                         value={manageType}
                         onChange={(e) => setManageType(e.target.value)}
                         disabled={manageUserId === '10032853'}
@@ -5181,8 +6158,8 @@ export default function App() {
                     )}
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '1rem' }}>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => {
                           setShowUserModal(false);
                           resetUserManagementForm();
@@ -5196,8 +6173,8 @@ export default function App() {
                       >
                         Cancel
                       </button>
-                      <button 
-                        type="submit" 
+                      <button
+                        type="submit"
                         className="pg-btn"
                         style={{
                           backgroundColor: 'var(--color-primary)',
@@ -5246,9 +6223,9 @@ export default function App() {
                       <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Current Password</label>
                       <div style={{ position: 'relative' }}>
                         <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                        <input 
-                          type="password" 
-                          placeholder="Enter Current Password" 
+                        <input
+                          type="password"
+                          placeholder="Enter Current Password"
                           value={vCurrentPassword}
                           onChange={(e) => setVCurrentPassword(e.target.value)}
                           className="custom-input"
@@ -5261,9 +6238,9 @@ export default function App() {
                       <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>New Password</label>
                       <div style={{ position: 'relative' }}>
                         <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                        <input 
-                          type="password" 
-                          placeholder="Enter New Password" 
+                        <input
+                          type="password"
+                          placeholder="Enter New Password"
                           value={vNewPassword}
                           onChange={(e) => setVNewPassword(e.target.value)}
                           className="custom-input"
@@ -5276,9 +6253,9 @@ export default function App() {
                       <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Confirm New Password</label>
                       <div style={{ position: 'relative' }}>
                         <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                        <input 
-                          type="password" 
-                          placeholder="Confirm New Password" 
+                        <input
+                          type="password"
+                          placeholder="Confirm New Password"
                           value={vConfirmNewPassword}
                           onChange={(e) => setVConfirmNewPassword(e.target.value)}
                           className="custom-input"
@@ -5305,8 +6282,8 @@ export default function App() {
                     )}
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '1rem' }}>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => {
                           setShowChangePasswordModal(false);
                           setVCurrentPassword('');
@@ -5323,8 +6300,8 @@ export default function App() {
                       >
                         Cancel
                       </button>
-                      <button 
-                        type="submit" 
+                      <button
+                        type="submit"
                         className="pg-btn"
                         style={{
                           backgroundColor: 'var(--color-primary)',
@@ -5359,7 +6336,7 @@ export default function App() {
               {/* Target Table Selector */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>1. Select Target Database Table</label>
-                <select 
+                <select
                   className="custom-select"
                   value={syncTable}
                   onChange={(e) => {
@@ -5383,16 +6360,16 @@ export default function App() {
               {/* File Upload Selector */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>2. Choose File (Excel .xlsx / .xls or CSV)</label>
-                <input 
+                <input
                   key={fileInputKey}
-                  type="file" 
-                  accept=".xlsx, .xls, .csv" 
+                  type="file"
+                  accept=".xlsx, .xls, .csv"
                   onChange={handleFileChange}
                   className="custom-input"
-                  style={{ 
-                    maxWidth: '400px', 
-                    padding: '8px', 
-                    border: '1px dashed var(--border-color)', 
+                  style={{
+                    maxWidth: '400px',
+                    padding: '8px',
+                    border: '1px dashed var(--border-color)',
                     backgroundColor: 'var(--bg-input)',
                     height: 'auto'
                   }}
@@ -5403,15 +6380,15 @@ export default function App() {
               {syncFile && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>3. Select Report Date</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     value={syncReportDate}
                     onChange={(e) => setSyncReportDate(e.target.value)}
                     className="custom-input"
                     required
-                    style={{ 
-                      maxWidth: '300px', 
-                      padding: '8px', 
+                    style={{
+                      maxWidth: '300px',
+                      padding: '8px',
                       backgroundColor: 'var(--bg-input)',
                       color: 'var(--text-primary)',
                       border: '1px solid var(--border-color)',
@@ -5481,21 +6458,21 @@ export default function App() {
                     <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>5. Select Synchronization Mode</label>
                     <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                        <input 
-                          type="radio" 
-                          name="syncMode" 
-                          value="append" 
-                          checked={syncMode === 'append'} 
+                        <input
+                          type="radio"
+                          name="syncMode"
+                          value="append"
+                          checked={syncMode === 'append'}
                           onChange={(e) => setSyncMode(e.target.value)}
                         />
                         <span><strong>Add at last (Append)</strong> — Add new records without changing existing data</span>
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                        <input 
-                          type="radio" 
-                          name="syncMode" 
-                          value="replace" 
-                          checked={syncMode === 'replace'} 
+                        <input
+                          type="radio"
+                          name="syncMode"
+                          value="replace"
+                          checked={syncMode === 'replace'}
                           onChange={(e) => setSyncMode(e.target.value)}
                         />
                         <span style={{ color: 'var(--color-warning)' }}><strong>Replace entire data (Overwrite)</strong> — Erase existing table rows and upload fresh</span>
@@ -5529,105 +6506,105 @@ export default function App() {
                 </div>
               )}
 
-            {/* Database Sync Overlay Modal (centered popup) */}
-            {(isSyncing || !!syncError || syncSuccess) && (
-              <div style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: 'rgba(0, 0, 0, 0.75)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 10000,
-                padding: '20px'
-              }}>
+              {/* Database Sync Overlay Modal (centered popup) */}
+              {(isSyncing || !!syncError || syncSuccess) && (
                 <div style={{
-                  backgroundColor: 'var(--bg-card)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 'var(--radius-lg)',
-                  width: '100%',
-                  maxWidth: '450px',
-                  padding: '30px',
-                  boxShadow: 'var(--shadow-premium)',
-                  textAlign: 'center',
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0, 0, 0, 0.75)',
                   display: 'flex',
-                  flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '20px'
+                  justifyContent: 'center',
+                  zIndex: 10000,
+                  padding: '20px'
                 }}>
-                  {isSyncing && (
-                    <>
-                      <div className="spinner" style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-primary)' }}></div>
-                      <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Synchronizing Database</h3>
-                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{syncProgress}</p>
-                    </>
-                  )}
+                  <div style={{
+                    backgroundColor: 'var(--bg-card)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-lg)',
+                    width: '100%',
+                    maxWidth: '450px',
+                    padding: '30px',
+                    boxShadow: 'var(--shadow-premium)',
+                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '20px'
+                  }}>
+                    {isSyncing && (
+                      <>
+                        <div className="spinner" style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-primary)' }}></div>
+                        <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Synchronizing Database</h3>
+                        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{syncProgress}</p>
+                      </>
+                    )}
 
-                  {syncError && (
-                    <>
-                      <AlertTriangle size={48} style={{ color: 'var(--color-error)' }} />
-                      <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--color-error)' }}>Sync Failed</h3>
-                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', wordBreak: 'break-word' }}>{syncError}</p>
-                      <button 
-                        onClick={() => {
-                          setSyncError('');
-                          setIsSyncing(false);
-                          setSyncProgress('');
-                        }}
-                        className="pg-btn"
-                        style={{
-                          backgroundColor: 'var(--color-primary)',
-                          color: '#14210f',
-                          border: 'none',
-                          fontWeight: 'bold',
-                          width: '100%',
-                          height: '38px',
-                          marginTop: '10px'
-                        }}
-                      >
-                        Close
-                      </button>
-                    </>
-                  )}
+                    {syncError && (
+                      <>
+                        <AlertTriangle size={48} style={{ color: 'var(--color-error)' }} />
+                        <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--color-error)' }}>Sync Failed</h3>
+                        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', wordBreak: 'break-word' }}>{syncError}</p>
+                        <button
+                          onClick={() => {
+                            setSyncError('');
+                            setIsSyncing(false);
+                            setSyncProgress('');
+                          }}
+                          className="pg-btn"
+                          style={{
+                            backgroundColor: 'var(--color-primary)',
+                            color: '#14210f',
+                            border: 'none',
+                            fontWeight: 'bold',
+                            width: '100%',
+                            height: '38px',
+                            marginTop: '10px'
+                          }}
+                        >
+                          Close
+                        </button>
+                      </>
+                    )}
 
-                  {syncSuccess && (
-                    <>
-                      <CheckCircle size={48} style={{ color: 'var(--color-success)' }} />
-                      <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--color-success)' }}>Data Saved</h3>
-                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>The financial records have been successfully saved to Supabase.</p>
-                      <button 
-                        onClick={() => {
-                          setSyncSuccess(false);
-                          setSyncProgress('');
-                          window.location.reload();
-                        }}
-                        className="pg-btn"
-                        style={{
-                          backgroundColor: 'var(--color-success)',
-                          color: 'white',
-                          border: 'none',
-                          fontWeight: 'bold',
-                          width: '100%',
-                          height: '38px',
-                          marginTop: '10px'
-                        }}
-                      >
-                        OK
-                      </button>
-                    </>
-                  )}
+                    {syncSuccess && (
+                      <>
+                        <CheckCircle size={48} style={{ color: 'var(--color-success)' }} />
+                        <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--color-success)' }}>Data Saved</h3>
+                        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>The financial records have been successfully saved to Supabase.</p>
+                        <button
+                          onClick={() => {
+                            setSyncSuccess(false);
+                            setSyncProgress('');
+                            window.location.reload();
+                          }}
+                          className="pg-btn"
+                          style={{
+                            backgroundColor: 'var(--color-success)',
+                            color: 'white',
+                            border: 'none',
+                            fontWeight: 'bold',
+                            width: '100%',
+                            height: '38px',
+                            marginTop: '10px'
+                          }}
+                        >
+                          OK
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             </div>
           </>
         )}
 
       </main>
-      
+
       {/* 6. Footer */}
       <footer style={{
         display: 'flex',
