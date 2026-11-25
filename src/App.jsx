@@ -42,7 +42,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // MAINTENANCE MODE TOGGLE FOR VERTICAL REVENUE
 // Change this to `false` (or remove) whenever you want to restore the normal view.
 // =========================================================================
-const IS_VERTICAL_REVENUE_UNDER_MAINTENANCE = false;
+const IS_VERTICAL_REVENUE_UNDER_MAINTENANCE = true;
 
 // Lightweight, high-performance CSV parser
 function parseCSV(text) {
